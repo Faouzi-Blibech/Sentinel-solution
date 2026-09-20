@@ -24,6 +24,29 @@ not adapt.
 So: a submission that passes 19 scenarios proves nothing. Your job is to build the adversary
 that makes the difference visible.
 
+## What already exists
+
+Built and runnable. Your job is now the report, not the plumbing.
+
+```bash
+scripts/run_ablation.sh <kit>   # ablation matrix on the published split
+scripts/run_redteam.sh  <kit>   # every defense against our held-out set
+```
+
+- `redteam/attacker.py` -- adaptive attacker that reads `request.transcript`
+- `redteam/strategies.py` -- nine payload strategies, each aimed at a named defense property
+- `redteam/harness.py` -- the matrix, using `evaluate(..., ood_scenarios=...)` which the CLI never exposes
+- `redteam/scenarios/` -- five held-out scenarios, 5/5 valid
+- `docs/report/findings.md` -- the results, written up with the limitations
+
+**The headline: on our held-out set `heuristic_risk` drops from 0.999 to 0.812 with a
+critical violation, and HARIS holds at ASR 0.000.** The breach is `tool_output_manipulation`.
+
+**Read the limitations section before you write anything.** Two things there are load
+bearing: our attacker is *not* what breaks `heuristic_risk` (the scenarios are), and four
+of nine strategies are inert under the mock model's directive grammar. Both belong in the
+report as stated, not softened.
+
 ## 1. The adaptive attacker
 
 Implement `sentinel.attackers.interface.Attacker`:
