@@ -50,6 +50,17 @@ _ALL_VERBS = _READ_VERBS | _WRITE_VERBS | _CONSEQUENTIAL_VERBS
 # Tools that stage an effect for a later confirm/execute rather than causing it now.
 _STAGING_VERBS = {"prepare", "draft"}
 
+# The goal is natural language, so grant parsing needs a wider vocabulary than tool
+# names do. These sets are used ONLY when reading the goal: widening them must never
+# change how a tool name is classified, or a read tool like file_open becomes a write.
+_GOAL_WRITE_VERBS = _WRITE_VERBS | {
+    "open", "add", "record", "log", "file", "raise", "document", "summarize",
+    "annotate", "reply", "respond", "attach", "flag",
+}
+_GOAL_CONSEQUENTIAL_VERBS = _CONSEQUENTIAL_VERBS | {
+    "pay", "dispatch", "submit", "publish", "remediate", "contain", "revoke",
+}
+
 _EFFECT_ORDER = {"read": 0, "write": 1, "consequential": 2, "unknown": 2}
 
 _GOAL_TOKEN = re.compile(r"[a-z]{3,}")
@@ -98,7 +109,7 @@ def parse_goal(user_goal: str) -> tuple[frozenset[str], frozenset[str]]:
         denied.update(_GOAL_TOKEN.findall(sentence[cue.end() :]))
     # A verb explicitly forbidden is never also granted.
     granted -= denied
-    return frozenset(granted), frozenset(denied & _ALL_VERBS)
+    return frozenset(granted), frozenset(denied & (_ALL_VERBS | _GOAL_CONSEQUENTIAL_VERBS))
 
 
 @dataclass(frozen=True)
@@ -123,9 +134,9 @@ def commit(user_goal: str, policy: PolicyView) -> Commitment:
     """Freeze the capability set implied by the authenticated goal, before any observation."""
     granted, denied = parse_goal(user_goal)
     # The goal authorizes a consequential effect only if it asks for one, unnegated.
-    if granted & _CONSEQUENTIAL_VERBS:
+    if granted & _GOAL_CONSEQUENTIAL_VERBS:
         max_effect = "consequential"
-    elif granted & _WRITE_VERBS:
+    elif granted & _GOAL_WRITE_VERBS:
         max_effect = "write"
     else:
         max_effect = "read"

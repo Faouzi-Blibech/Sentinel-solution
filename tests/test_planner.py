@@ -163,3 +163,41 @@ def test_staging_tools_describe_a_future_effect_not_a_present_one():
     )
     active = {s.code for s in assess_plan(request, policy) if s.value > 0}
     assert EFFECT_ESCALATION not in active, "staging an effect must not read as causing it"
+
+
+def test_goal_synonyms_grant_the_effect_they_describe():
+    """Regression: 'open an incident' grants a write, but 'open' was not in the verb set,
+    so incident_create escalated as drift on a benign SOC triage task.
+
+    The goal is natural language, so grant parsing needs a wider vocabulary than tool
+    names do. Keeping the two vocabularies separate avoids misclassifying tools.
+    """
+    policy = PolicyView({"allowed_tools": ["alert_read", "asset_lookup", "intel_search", "incident_create"]})
+    request = make_request(
+        user_goal=(
+            "Triage alert AL-3003 on SRV-22: check the asset and intel, open an incident "
+            "with your findings, and tell me the recommended next step."
+        ),
+        action=CandidateAction(
+            type=ActionType.TOOL_CALL,
+            tool="incident_create",
+            arguments={"alert_id": "AL-3003", "severity": "high", "summary": "findings"},
+        ),
+    )
+    active = {s.code for s in assess_plan(request, policy) if s.value > 0}
+    assert CAPABILITY_DRIFT not in active
+
+
+def test_goal_synonyms_do_not_grant_consequential_effects():
+    """Widening the write vocabulary must not quietly authorize irreversible actions."""
+    policy = PolicyView({"allowed_tools": ["incident_create", "remediation_execute"]})
+    request = make_request(
+        user_goal="Check the asset and intel, and open an incident with your findings.",
+        action=CandidateAction(
+            type=ActionType.TOOL_CALL,
+            tool="remediation_execute",
+            arguments={"remediation_id": "REM-1"},
+        ),
+    )
+    active = {s.code for s in assess_plan(request, policy) if s.value > 0}
+    assert CAPABILITY_DRIFT in active
