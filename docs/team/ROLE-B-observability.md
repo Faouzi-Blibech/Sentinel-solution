@@ -29,6 +29,17 @@ Not Streamlit: its rerun-on-interaction model fights timeline UIs, and a default
 reads as templated, which costs Creativity & Novelty points. A single hand-built page tailing a
 JSONL file is more reliable on demo day and looks deliberate.
 
+## What already exists
+
+`dashboard/` is built and working against all 28 scenarios: `scripts/run_dashboard.sh <kit>`.
+Your job is now the recording, not the plumbing.
+
+One thing to know before you record: the simulator's artifact **drops every field that explains
+a decision**. `DecisionRecord` keeps decision, risk score, confidence and reason codes, and no
+trust level reaches it at all. So HARIS writes `artifacts/haris/journal.jsonl` beside the trace
+and the viewer joins them on `(run_id, step_id)`. If a run shows "Reasoning: journal missing",
+that run predates the journal -- rerun it.
+
 ## Data you consume
 
 Run artifacts are JSONL at `artifacts/<run>/<scenario>-<defense>-s0.jsonl`, one `Event` per line:
@@ -43,10 +54,10 @@ event_id, run_id, step_id, seq, type, timestamp, actor, payload, provenance_refs
 
 `Actor`: `user`, `agent`, `defense`, `tool_gateway`, `human_simulator`, `evaluator`.
 
-The rich part lives on `defense_decision` events, in the `metadata` dict Role A emits — signals
-with weights and contributions, trust levels, data-flow destination and encoding, stage timings.
-**Read that schema from `docs/team/ROLE-A-defense-core.md` and build against a recorded fixture
-trace so you never wait on A.**
+`defense_decision` events carry only decision, risk score, confidence, reason codes and the
+action. The `metadata` Role A emits is **not** in them, so the reasoning comes from
+`artifacts/haris/journal.jsonl` instead: signals with weights and contributions, resolved trust
+levels, data-flow destination and encoding, and stage timings. `dashboard/trace.py` does the join.
 
 ## The four panels
 

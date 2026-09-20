@@ -87,4 +87,37 @@ Then, from the official starter kit directory:
 uv run sentinel eval public --defense-url http://127.0.0.1:8080
 ```
 
+## Red-team
+
+```bash
+scripts/run_redteam.sh /path/to/Sentinel_Starter_Kit
+```
+
+Five held-out scenarios we wrote, plus an adaptive attacker that reads the defense's own
+decisions from `request.transcript` -- which the attacker shipped in the kit does not.
+
+On that held-out set the shipped `heuristic_risk` defense falls from **0.999 to 0.812**
+with a critical violation, while HARIS holds at **ASR 0.000**. The breach is a directive
+carried inside a record-shaped payload: invisible to a defense keyed on
+instruction-shaped language, plainly untrusted to one keyed on provenance.
+
+Full results and limitations, including what our red-team does *not* establish:
+`docs/report/findings.md`.
+
+## Trace viewer
+
+The observability layer joins two sources. The simulator's artifact says *what happened*; it
+keeps only decision, risk score, confidence and reason codes, and no trust level ever reaches
+it. HARIS writes its own journal alongside, which says *why*. They join on `(run_id, step_id)`.
+
+```bash
+scripts/run_dashboard.sh /path/to/Sentinel_Starter_Kit    # http://127.0.0.1:8090
+```
+
+Four linked panels: the step spine, the risk decomposition read from the recorded signals, the
+trust chain, and the data flow from a sensitive value to the destination that was refused.
+Move through steps with `J` and `K`; jump to the first intervention with `B`.
+
+A trace recorded by any other defense still renders, just without the decomposition.
+
 See `CLAUDE.md` for the full contract, the environment traps, and the command reference.
