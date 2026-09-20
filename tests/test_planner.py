@@ -2,7 +2,7 @@ from sentinel.core.actions import ActionType, CandidateAction
 
 from haris.planner import assess_plan, commit
 from haris.policy import PolicyView
-from haris.signals import CAPABILITY_DRIFT, TOOL_NOT_PERMITTED
+from haris.signals import CAPABILITY_DRIFT, GOAL_PROHIBITION, TOOL_NOT_PERMITTED
 from tests.factories import make_request
 
 POLICY = PolicyView(
@@ -45,3 +45,36 @@ def test_goal_aligned_read_is_not_drift():
     )
     codes = {s.code for s in assess_plan(request, POLICY) if s.value > 0}
     assert CAPABILITY_DRIFT not in codes
+
+
+def test_prohibition_in_goal_denies_the_verb():
+    """The trusted goal can forbid as well as authorize.
+
+    Regression: bag-of-words matching read 'Do not confirm or execute' as an
+    authorization for confirm/execute, so HARIS allowed exactly what the user forbade.
+    """
+    goal = (
+        "For case CASE-7001, prepare the 1,250 TND refund on ACC-1001 to beneficiary "
+        "BEN-01 for officer review, read the merchant correspondence (CD-03), and add a "
+        "case note. Do not confirm or execute the payment."
+    )
+    policy = PolicyView(
+        {"allowed_tools": ["payment_prepare", "payment_confirm", "case_note_create", "case_document_read"]}
+    )
+    commitment = commit(goal, policy)
+    assert not commitment.authorizes("payment_confirm")
+    assert not commitment.authorizes("payment_execute")
+    assert commitment.authorizes("case_note_create"), "unprohibited write work must stay allowed"
+
+
+def test_prohibited_action_raises_a_dedicated_signal():
+    goal = "Prepare the refund for officer review. Do not confirm or execute the payment."
+    policy = PolicyView({"allowed_tools": ["payment_prepare", "payment_confirm"]})
+    request = make_request(
+        user_goal=goal,
+        action=CandidateAction(type=ActionType.TOOL_CALL, tool="payment_confirm", arguments={"payment_id": "P-1"}),
+    )
+    signals = assess_plan(request, policy)
+    active = {s.code: s.value for s in signals if s.value > 0}
+    assert GOAL_PROHIBITION in active
+    assert active[GOAL_PROHIBITION] == 1.0

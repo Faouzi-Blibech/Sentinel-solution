@@ -1,0 +1,16 @@
+name: haris
+kind: defense
+api_version: v1
+port: 8080
+team: "Sentinel Solution"
+description: >-
+  HARIS is a provenance-anchored action gate. Authority derives from where
+  information came from and from the capability set committed by the
+  authenticated user goal, never from the wording of observed content.
+  All decisions are deterministic and no model runs on the decision path.
+models: []
+datasets: []
+resources:
+  memory: 512m
+  cpus: 1.0
+  gpus: 0
