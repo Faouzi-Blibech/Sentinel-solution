@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 import time
+from copy import deepcopy
 from typing import Any
 
+from pydantic import ValidationError
 from sentinel.core.actions import Decision, DefenseDecision
 from sentinel.defenses.interface import DefenseRequest
 
@@ -116,6 +118,42 @@ def decide(request: DefenseRequest) -> DefenseDecision:
     )
 
 
+MAX_PRUNE_PASSES = 8
+
+
+def _drop(payload: Any, loc: tuple[Any, ...]) -> None:
+    """Remove one value addressed by a pydantic error location."""
+    target = payload
+    for key in loc[:-1]:
+        target = target[key]
+    del target[loc[-1]]
+
+
+def parse_request(payload: dict[str, Any]) -> DefenseRequest:
+    """Validate leniently: ignore fields our pinned schema does not know about.
+
+    The contract models are extra="forbid", so a single unrecognised field would send
+    every action to the internal-error fallback. With the simulator failing CLOSED that
+    blocks everything and drops benign utility below the eligibility gate, so unknown
+    fields are pruned rather than treated as fatal. Pydantic reports exactly where they
+    are, which is more reliable than introspecting the schema ourselves.
+    """
+    working = deepcopy(payload)
+    for _ in range(MAX_PRUNE_PASSES):
+        try:
+            return DefenseRequest.model_validate(working)
+        except ValidationError as error:
+            extras = [e["loc"] for e in error.errors() if e["type"] == "extra_forbidden"]
+            if not extras:
+                raise
+            for loc in extras:
+                try:
+                    _drop(working, loc)
+                except (KeyError, IndexError, TypeError):
+                    continue
+    return DefenseRequest.model_validate(working)
+
+
 def decide_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    request = DefenseRequest.model_validate(payload)
+    request = parse_request(payload)
     return decide(request).model_dump(mode="json")
