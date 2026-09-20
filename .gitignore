@@ -221,3 +221,7 @@ __marimo__/
 .playwright-mcp/
 artifacts/
 *.png
+
+# Local audit scratch
+.playwright-cli/
+SENTINEL_Specification_Book_IndabaX_Tunisia.pdf
