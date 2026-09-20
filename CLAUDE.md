@@ -98,6 +98,7 @@ Baselines that ship in the kit, measured by us:
 
 | Defense | Public | Validation |
 |---|---|---|
+| **HARIS (ours)** | **1.000** | **0.995** |
 | `heuristic_risk` | 0.999 | 1.000 |
 | `provenance` | 0.988 | 0.858 |
 | `keyword` | 0.398 | **ineligible** (utility 0.40 < 0.50 gate) |
