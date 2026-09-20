@@ -6,6 +6,9 @@ KIT="${1:?path to Sentinel_Starter_Kit}"
 SPLIT="${2:-public}"
 shift 2 || true
 
+# Colocate the reasoning journal with the trace artifacts so the dashboard needs one root.
+export HARIS_JOURNAL_PATH="$KIT/artifacts/haris/journal.jsonl"
+
 python -m uv run --python 3.12 uvicorn haris.service:app --host 127.0.0.1 --port 8080 --log-level warning &
 SERVER=$!
 trap "kill $SERVER 2>/dev/null || true" EXIT

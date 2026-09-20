@@ -19,6 +19,7 @@ from haris.authority import assess_authority
 from haris.config import SETTINGS
 from haris.dataflow import assess_dataflow
 from haris.fusion import fuse
+from haris.journal import Journal
 from haris.planner import assess_plan
 from haris.policy import PolicyView
 from haris.rewrite import safer_alternative
@@ -57,7 +58,7 @@ def _explain(decision: Decision, codes: list[str]) -> str:
     return f"Blocked: {joined}."
 
 
-def decide(request: DefenseRequest) -> DefenseDecision:
+def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str, Any]]:
     started = time.perf_counter()
     policy = PolicyView(request.policy_context)
     view = TrustView(request)
@@ -107,7 +108,7 @@ def decide(request: DefenseRequest) -> DefenseDecision:
         "total_ms": round((time.perf_counter() - started) * 1000, 3),
     }
 
-    return DefenseDecision(
+    verdict = DefenseDecision(
         decision=decision,
         risk_score=result.risk_score,
         confidence=result.confidence,
@@ -116,6 +117,12 @@ def decide(request: DefenseRequest) -> DefenseDecision:
         rewritten_action=rewritten,
         metadata=_trim_metadata(metadata, SETTINGS.max_metadata_bytes),
     )
+    return verdict, metadata
+
+
+def decide(request: DefenseRequest) -> DefenseDecision:
+    """The contract entry point. Callers wanting the untrimmed metadata use decide_detailed."""
+    return decide_detailed(request)[0]
 
 
 MAX_PRUNE_PASSES = 8
@@ -154,6 +161,11 @@ def parse_request(payload: dict[str, Any]) -> DefenseRequest:
     return DefenseRequest.model_validate(working)
 
 
+_JOURNAL = Journal()
+
+
 def decide_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     request = parse_request(payload)
-    return decide(request).model_dump(mode="json")
+    verdict, full_metadata = decide_detailed(request)
+    _JOURNAL.record(request, verdict, full_metadata)
+    return verdict.model_dump(mode="json")

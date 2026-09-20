@@ -87,4 +87,20 @@ Then, from the official starter kit directory:
 uv run sentinel eval public --defense-url http://127.0.0.1:8080
 ```
 
+## Trace viewer
+
+The observability layer joins two sources. The simulator's artifact says *what happened*; it
+keeps only decision, risk score, confidence and reason codes, and no trust level ever reaches
+it. HARIS writes its own journal alongside, which says *why*. They join on `(run_id, step_id)`.
+
+```bash
+scripts/run_dashboard.sh /path/to/Sentinel_Starter_Kit    # http://127.0.0.1:8090
+```
+
+Four linked panels: the step spine, the risk decomposition read from the recorded signals, the
+trust chain, and the data flow from a sensitive value to the destination that was refused.
+Move through steps with `J` and `K`; jump to the first intervention with `B`.
+
+A trace recorded by any other defense still renders, just without the decomposition.
+
 See `CLAUDE.md` for the full contract, the environment traps, and the command reference.

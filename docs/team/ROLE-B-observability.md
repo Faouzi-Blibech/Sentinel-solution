@@ -29,6 +29,17 @@ Not Streamlit: its rerun-on-interaction model fights timeline UIs, and a default
 reads as templated, which costs Creativity & Novelty points. A single hand-built page tailing a
 JSONL file is more reliable on demo day and looks deliberate.
 
+## What already exists
+
+`dashboard/` is built and working against all 28 scenarios: `scripts/run_dashboard.sh <kit>`.
+Your job is now the recording, not the plumbing.
+
+One thing to know before you record: the simulator's artifact **drops every field that explains
+a decision**. `DecisionRecord` keeps decision, risk score, confidence and reason codes, and no
+trust level reaches it at all. So HARIS writes `artifacts/haris/journal.jsonl` beside the trace
+and the viewer joins them on `(run_id, step_id)`. If a run shows "Reasoning: journal missing",
+that run predates the journal -- rerun it.
+
 ## Data you consume
 
 Run artifacts are JSONL at `artifacts/<run>/<scenario>-<defense>-s0.jsonl`, one `Event` per line:
