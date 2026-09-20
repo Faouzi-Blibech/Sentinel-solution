@@ -25,12 +25,21 @@ from sentinel.core.actions import ActionType
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.policy import PolicyView
-from haris.signals import CAPABILITY_DRIFT, GOAL_PROHIBITION, TOOL_NOT_PERMITTED, Signal
+from haris.signals import (
+    CAPABILITY_DRIFT,
+    EFFECT_ESCALATION,
+    GOAL_PROHIBITION,
+    TOOL_NOT_PERMITTED,
+    Signal,
+)
 
 DRIFT_WEIGHT = 0.40
 PERMISSION_WEIGHT = 0.50
 # A prohibition from the authenticated user is decisive on its own.
 PROHIBITION_WEIGHT = 0.95
+ESCALATION_WEIGHT = 0.85
+# Enum-like argument values are short and unspaced; prose is not an enum.
+MAX_ENUM_CHARS = 24
 
 _READ_VERBS = {"read", "search", "lookup", "list", "get", "fetch", "view", "correlate", "triage"}
 _WRITE_VERBS = {"draft", "create", "note", "comment", "update", "prepare", "write", "save", "store"}
@@ -38,6 +47,8 @@ _CONSEQUENTIAL_VERBS = {
     "send", "execute", "confirm", "approve", "close", "disable", "transfer", "delete", "isolate",
 }
 _ALL_VERBS = _READ_VERBS | _WRITE_VERBS | _CONSEQUENTIAL_VERBS
+# Tools that stage an effect for a later confirm/execute rather than causing it now.
+_STAGING_VERBS = {"prepare", "draft"}
 
 _EFFECT_ORDER = {"read": 0, "write": 1, "consequential": 2, "unknown": 2}
 
@@ -126,11 +137,56 @@ def commit(user_goal: str, policy: PolicyView) -> Commitment:
     )
 
 
+def _enum_effect(value: object) -> str | None:
+    """The consequential verb an enum-like argument value would trigger, if any.
+
+    A tool name says what a tool is; an argument value can say what it *does*.
+    ticket_update(status="closed") closes a ticket, and reading the effect class from
+    the tool name alone misses that entirely.
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip().lower()
+    if not candidate or len(candidate) > MAX_ENUM_CHARS or any(c.isspace() for c in candidate):
+        return None
+    for verb in _CONSEQUENTIAL_VERBS:
+        # Covers inflections such as close/closed, approve/approved, disable/disabled.
+        if candidate == verb or candidate.startswith(verb):
+            return verb
+    return None
+
+
+def assess_effects(request: DefenseRequest, commitment: Commitment) -> Signal:
+    """Consequential effects carried by argument values rather than by the tool name."""
+    action = request.candidate_action
+    if action.tool and _verbs(action.tool) & _STAGING_VERBS:
+        # Preparing an isolation is not isolating. A staging tool's consequential-looking
+        # argument names the effect a later confirm/execute would cause, not one happening
+        # now, and the lifecycle gate is what actually protects it.
+        return Signal(
+            code=EFFECT_ESCALATION,
+            weight=ESCALATION_WEIGHT,
+            value=0.0,
+            detail=f"{action.tool} stages an effect; the lifecycle gate governs it",
+        )
+    for key, value in action.arguments.items():
+        verb = _enum_effect(value)
+        if verb is not None and verb not in commitment.goal_tokens:
+            return Signal(
+                code=EFFECT_ESCALATION,
+                weight=ESCALATION_WEIGHT,
+                value=1.0,
+                detail=f"{key}={value!r} triggers {verb}, not granted by the goal",
+            )
+    return Signal(code=EFFECT_ESCALATION, weight=ESCALATION_WEIGHT, value=0.0, detail="no ungranted effect")
+
+
 def assess_plan(request: DefenseRequest, policy: PolicyView) -> list[Signal]:
     action = request.candidate_action
     if action.type is not ActionType.TOOL_CALL or action.tool is None:
         return [
             Signal(code=GOAL_PROHIBITION, weight=PROHIBITION_WEIGHT, value=0.0, detail="not a tool call"),
+            Signal(code=EFFECT_ESCALATION, weight=ESCALATION_WEIGHT, value=0.0, detail="not a tool call"),
             Signal(code=TOOL_NOT_PERMITTED, weight=PERMISSION_WEIGHT, value=0.0, detail="not a tool call"),
             Signal(code=CAPABILITY_DRIFT, weight=DRIFT_WEIGHT, value=0.0, detail="not a tool call"),
         ]
@@ -143,6 +199,7 @@ def assess_plan(request: DefenseRequest, policy: PolicyView) -> list[Signal]:
     drift = 0.0 if commitment.authorizes(tool) else 1.0
 
     return [
+        assess_effects(request, commitment),
         Signal(
             code=GOAL_PROHIBITION,
             weight=PROHIBITION_WEIGHT,
