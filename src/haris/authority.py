@@ -62,6 +62,21 @@ _TOOL_SHAPED = re.compile(
 # opener: it is how a poisoned memory gets planted for a later turn.
 _MEMORY_DIRECTIVE = re.compile(r"(?:^|[.!?\n]\s*)(remember|note\s+to\s+self|store\s+this)\s*:", re.IGNORECASE)
 
+# The same two tool-call shapes as _TOOL_SHAPED, capturing the tool named and stopping at
+# the opening brace of the argument block the text dictates for it.
+_DICTATED_CALL = re.compile(
+    r"\b(?:call|invoke|run|execute|perform)\s+([a-z][a-z0-9_]{2,})\s*(?:(?:with|using)\s*)?(?=\{)"
+    r"|\b([a-z][a-z0-9_]{2,})\s*\(\s*(?=\{)",
+    re.IGNORECASE,
+)
+_DICTATED_VALUE = re.compile(r':\s*"((?:[^"\\]|\\.)*)"')
+# `{{last_result}}` names a slot the agent fills, not a value the text supplies. No brace
+# inside it: `.*?` let every "{{" of a brace run scan to the end of the text.
+_PLACEHOLDER = re.compile(r"\{\{[^{}]*\}\}")
+_WORD = re.compile(r"[a-z0-9]+")
+# Long enough to skip "the", "and", "with"; short enough to keep "token" and "portal".
+MIN_DICTATED_WORD = 5
+
 
 def _directive_strength(text: str) -> tuple[float, list[str]]:
     hits: list[str] = []
@@ -85,17 +100,23 @@ def _directive_strength(text: str) -> tuple[float, list[str]]:
 
 
 def _action_tokens(action: CandidateAction) -> set[str]:
-    """Normalized things the action is about: its tool and its identifier-like values.
+    """Normalized things the action is about: its tool and its identifier-like values."""
+    tokens = _argument_tokens(action)
+    if action.tool and len(normalize(action.tool)) >= MIN_CORRESPONDENCE_CHARS:
+        tokens.add(normalize(action.tool))
+    return tokens
+
+
+def _argument_tokens(action: CandidateAction) -> set[str]:
+    """Normalized identifier-like values in the action's arguments.
 
     Ordinary words must stay out. An early version collected every word of a message
     body, so a draft mentioning a "delivery window" matched a vendor email mentioning
     the same delivery window and the courtesy was read as an obeyed order. Only tokens
-    that identify something -- a tool, an address, a record id -- can show that this
-    action and that text are about the same thing.
+    that identify something -- an address, a record id -- can show that this action and
+    that text are about the same thing.
     """
     tokens: set[str] = set()
-    if action.tool:
-        tokens.add(normalize(action.tool))
     for value in action.arguments.values():
         if not isinstance(value, str):
             continue
@@ -135,9 +156,59 @@ def _is_obeyed(span: str, tokens: set[str]) -> str:
     return ""
 
 
+def _argument_block(text: str, start: int) -> str:
+    """The brace-balanced block opening at `start`, or the rest of the text if unclosed."""
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return text[start:]
+
+
+def _obeys_dictated_call(span: str, action: CandidateAction, grounded_words: set[str]) -> str:
+    """Is the agent making a call this span wrote out, with the arguments it dictated?
+
+    A tool name alone proves nothing: the agent knows its tools from the policy, so a
+    legitimate call to a tool an injection also named is not obedience. What only the
+    injection can supply is the arguments it dictates. Those are often plain words -- a
+    search query -- which `_argument_tokens` rightly ignores in free text; inside a call
+    the text itself addressed to this tool, they are specific enough to count. A value
+    counts as carried when two of its words (one, if it has only one) that the user's
+    goal and trusted context never used turn up in this call, which survives the agent
+    trimming or reordering the query.
+    """
+    if not action.tool:
+        return ""
+    carried = {
+        word
+        for value in action.arguments.values()
+        if isinstance(value, str)
+        for word in _WORD.findall(value.lower())
+    }
+    for match in _DICTATED_CALL.finditer(span):
+        named = match.group(1) or match.group(2)
+        if named.lower() != action.tool.lower():
+            continue
+        for value in _DICTATED_VALUE.findall(_argument_block(span, match.end())):
+            words = {
+                word
+                for word in _WORD.findall(_PLACEHOLDER.sub(" ", value).lower())
+                if len(word) >= MIN_DICTATED_WORD and word not in grounded_words
+            }
+            if words and len(words & carried) >= min(2, len(words)):
+                return normalize(action.tool)
+    return ""
+
+
 def assess_authority(view, action: CandidateAction) -> list[Signal]:  # noqa: ANN001 -- TrustView
     """One signal: how strongly untrusted context is giving orders the agent is following."""
-    tokens = _ungrounded(_action_tokens(action), view.grounded_text())
+    grounded = view.grounded_text()
+    tokens = _ungrounded(_argument_tokens(action), grounded)
+    grounded_words = set(_WORD.findall(grounded.lower()))
     worst = 0.0
     detail = "no directive language in untrusted context"
     for content, trust in view.untrusted_spans():
@@ -146,9 +217,10 @@ def assess_authority(view, action: CandidateAction) -> list[Signal]:  # noqa: AN
             continue
         # Less trusted sources carry proportionally more weight.
         scaled = min(1.0, strength * (1.0 + 0.15 * (trust.rank - TrustLevel.TRUSTED_INTERNAL.rank)))
-        obeyed = _is_obeyed(content, tokens)
+        obeyed = _is_obeyed(content, tokens) or _obeys_dictated_call(content, action, grounded_words)
         # Text the agent is not acting on stays visible in the trace but cannot escalate
-        # on its own. Text naming the very tool or address now in flight counts in full.
+        # on its own. Text naming the address now in flight, or dictating the call now in
+        # flight, counts in full.
         value = scaled if obeyed else scaled * UNOBEYED_FACTOR
         if value > worst:
             worst = value
