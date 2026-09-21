@@ -170,3 +170,47 @@ def test_a_tactic_that_worked_elsewhere_outranks_the_seed():
     attacker = AdaptiveAttacker(ledger=ledger)
     attacker.next_mutation(_request(round_=0))
     assert attacker.last_strategy == "encode"
+
+
+# --- Every operation the kit defines -------------------------------------------------
+#
+# The attacker only ever tried APPEND_TEXT and REPLACE_TEXT. The kit maps every
+# tool-output surface to SET_TOOL_TEXT alone, so on the organizers' 21 new exfiltration
+# scenarios it found nowhere to write, injected nothing, and every defense "held" -- the
+# ablation reported 21/21 for HARIS with its data-flow stage switched off.
+
+
+def _tool_output(surface_id="partner_advisory"):
+    return SurfaceView(
+        id=surface_id,
+        kind=SurfaceKind.TOOL_OUTPUT,
+        operations=[MutationOperation.SET_TOOL_TEXT],
+        max_chars=1500,
+        current_text="",
+    )
+
+
+def test_it_injects_into_a_tool_output_surface() -> None:
+    seed = SeedPayload(surface_id="partner_advisory", operation=MutationOperation.SET_TOOL_TEXT, text=SEED_TEXT)
+    mutation = AdaptiveAttacker().next_mutation(_request(surfaces=[_tool_output()], seeds=[seed]))
+    assert mutation is not None, "no mutation on a set_tool_text-only surface: the attack would never run"
+    assert mutation.operation is MutationOperation.SET_TOOL_TEXT
+    assert mutation.surface_id == "partner_advisory"
+
+
+def test_it_injects_into_a_memory_surface() -> None:
+    surface = SurfaceView(
+        id="shared_memory", kind=SurfaceKind.MEMORY, operations=[MutationOperation.WRITE_MEMORY],
+        max_chars=1500, current_text="",
+    )
+    seed = SeedPayload(surface_id="shared_memory", operation=MutationOperation.WRITE_MEMORY, text=SEED_TEXT)
+    mutation = AdaptiveAttacker().next_mutation(_request(surfaces=[surface], seeds=[seed]))
+    assert mutation is not None
+    assert mutation.operation is MutationOperation.WRITE_MEMORY
+
+
+def test_the_seeds_own_operation_is_preferred_on_its_own_surface() -> None:
+    surface = _surface(ops=[MutationOperation.APPEND_TEXT, MutationOperation.REPLACE_TEXT])
+    seed = SeedPayload(surface_id="merchant_letter", operation=MutationOperation.REPLACE_TEXT, text=SEED_TEXT)
+    mutation = AdaptiveAttacker().next_mutation(_request(surfaces=[surface], seeds=[seed]))
+    assert mutation is not None and mutation.operation is MutationOperation.REPLACE_TEXT
