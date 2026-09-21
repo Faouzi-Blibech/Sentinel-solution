@@ -18,6 +18,8 @@ ROOT="$(cd "$HERE/.." && pwd)"
 . "$HERE/_uv.sh"
 # shellcheck source=scripts/_preflight.sh
 . "$HERE/_preflight.sh"
+# shellcheck source=scripts/_serve.sh
+. "$HERE/_serve.sh"
 
 KIT="${1:?usage: scripts/run_eval.sh <kit_dir> [split] [sentinel args...]}"
 KIT="$(cd "$KIT" && pwd)"
@@ -29,33 +31,16 @@ if [ "$#" -gt 0 ]; then
 fi
 
 MARKER="$(mktemp)"
-SERVER=""
 cleanup() {
-  [ -n "$SERVER" ] && kill "$SERVER" 2>/dev/null || true
+  haris_stop_local
   rm -f "$MARKER"
 }
 trap cleanup EXIT
 
 if [ -z "${HARIS_URL:-}" ]; then
-  # A port nobody holds. A fixed 8080 meant that when something else already answered there
-  # -- the container from run_container.sh, say -- our server failed to bind, died
-  # silently, and the evaluation scored that other code as this checkout.
-  PORT="$("$_PY" -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
-  HARIS_URL="http://127.0.0.1:$PORT"
   # Colocate the reasoning journal with the trace artifacts so the dashboard needs one root.
   export HARIS_JOURNAL_PATH="$KIT/artifacts/haris/journal.jsonl"
-  # Serve from the repo root: uv finds the project by walking up from the working directory.
-  ( cd "$ROOT" && exec $UV run --python 3.12 uvicorn haris.service:app --host 127.0.0.1 --port "$PORT" --log-level warning ) &
-  SERVER=$!
-  for _ in $(seq 1 120); do
-    curl -s -m 2 "$HARIS_URL/healthz" >/dev/null 2>&1 && break
-    if ! kill -0 "$SERVER" 2>/dev/null; then
-      echo "the local HARIS server exited during startup; run it by hand to see why:" >&2
-      echo "  cd $ROOT && $UV run --python 3.12 uvicorn haris.service:app --port $PORT" >&2
-      exit 1
-    fi
-    sleep 0.5
-  done
+  haris_serve_local "$ROOT"
 fi
 
 if ! haris_preflight "$HARIS_URL"; then
