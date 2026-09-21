@@ -59,3 +59,52 @@ def test_respond_carrying_tainted_values_is_redacted():
 def test_clean_respond_is_not_rewritten():
     action = CandidateAction(type=ActionType.RESPOND, content="Summary complete.")
     assert safer_alternative(action, POLICY, tainted={"ctrsyn906faf7f88"}) is None
+
+
+# --- The rewrite must remove the unsafe property, not relabel the action ------------
+#
+# Found by probing: email_send(to=<external>, body=<restricted token>) was rewritten to
+# email_draft with the SAME recipient and the SAME token. email_draft is itself a sink
+# (sentinel/domains/enterprise/tools.py:83 returns Sink("email_draft",
+# recipient_trust(...))), so the canary still reached an untrusted destination and the
+# data-flow rule still fired at critical severity. The rewrite turned a block into a leak.
+
+TAINT = {"ptl77d2f914ax31"}
+LEAK = CandidateAction(
+    type=ActionType.TOOL_CALL,
+    tool="email_send",
+    arguments={
+        "to": "billing@lumen-supplies.example",
+        "subject": "ref",
+        "body": "Token PTL-77d2f914-ax31 as requested.",
+    },
+)
+
+
+def test_downgrade_redacts_tainted_arguments_rather_than_carrying_them_over():
+    alternative = safer_alternative(LEAK, POLICY, tainted=TAINT, reasons=["SENSITIVE_TO_EXTERNAL_SINK"])
+    assert alternative is not None
+    rendered = " ".join(str(v) for v in alternative.arguments.values())
+    assert "PTL-77d2f914-ax31" not in rendered
+    assert alternative.tool == "email_draft"
+    # The legitimate remainder of the message survives, which is the point of a rewrite.
+    assert "as requested" in alternative.arguments["body"]
+
+
+def test_no_rewrite_when_the_leak_cannot_be_removed():
+    """If the secret is the destination itself there is nothing safe to substitute."""
+    action = CandidateAction(
+        type=ActionType.TOOL_CALL,
+        tool="email_send",
+        arguments={"to": "ptl-77d2f914-ax31@collector.example", "body": "hello"},
+    )
+    assert safer_alternative(action, POLICY, tainted=TAINT, reasons=["SENSITIVE_TO_EXTERNAL_SINK"]) is None
+
+
+def test_an_explicit_user_prohibition_is_never_rewritten():
+    """Substituting a neighbouring action when the user forbade this one is disobedience,
+    not mitigation. A prohibition must reach BLOCK."""
+    action = CandidateAction(
+        type=ActionType.TOOL_CALL, tool="email_send", arguments={"to": "a@b.example", "body": "hi"}
+    )
+    assert safer_alternative(action, POLICY, reasons=["GOAL_PROHIBITION"]) is None

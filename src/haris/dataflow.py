@@ -14,6 +14,7 @@ from sentinel.core.actions import ActionType
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.encodings import normalize, variants
+from haris.lifecycle import target_action
 from haris.policy import PolicyView
 from haris.secrets import extract_tainted_values
 from haris.signals import ENCODED_PAYLOAD_DETECTED, SENSITIVE_TO_EXTERNAL_SINK, Signal
@@ -28,8 +29,23 @@ _DESTINATION_KEYS = ("to", "recipient", "destination", "url", "endpoint", "addre
 
 
 def _destinations(arguments: dict[str, Any]) -> list[str]:
+    """Where the action routes -- not every address its text happens to mention.
+
+    Harvesting addresses from every argument meant a draft to a colleague that cited
+    the vendor's contact address was classified as an external sink, and a legitimate
+    dispute summary carrying an invoice number was escalated. A destination is a
+    routing argument; an address inside a body is content, and content is what the
+    taint check is for.
+
+    When an action declares no routing argument at all we fall back to scanning its
+    values, because a tool we have never seen may name its destination differently and
+    missing a real sink is the costlier error.
+    """
+    routing = {k: v for k, v in arguments.items() if k.lower() in _DESTINATION_KEYS}
+    scanned = routing or arguments
+
     found: list[str] = []
-    for key, value in arguments.items():
+    for key, value in scanned.items():
         if not isinstance(value, str):
             continue
         if key.lower() in _DESTINATION_KEYS:
@@ -51,7 +67,9 @@ def _destination_class(destinations: list[str], policy: PolicyView) -> str:
 def assess_dataflow(
     request: DefenseRequest, view: TrustView, policy: PolicyView
 ) -> tuple[list[Signal], dict[str, Any]]:
-    action = request.candidate_action
+    # Judge the action that would take effect: a confirmation request carries the real
+    # destination and the real payload inside confirmation_for.
+    action = target_action(request.candidate_action)
     payload = action.text_payload()
     tainted = extract_tainted_values(view)
 

@@ -29,8 +29,9 @@ that makes the difference visible.
 Built and runnable. Your job is now the report, not the plumbing.
 
 ```bash
-scripts/run_ablation.sh <kit>   # ablation matrix on the published split
-scripts/run_redteam.sh  <kit>   # every defense against our held-out set
+scripts/run_ablation.sh        <kit>   # baseline ladder on the published split
+scripts/run_redteam.sh         <kit>   # every defense against our held-out set
+scripts/run_ablation_stages.sh <kit>   # THE ablation: HARIS minus one stage at a time
 ```
 
 - `redteam/attacker.py` -- adaptive attacker that reads `request.transcript`
@@ -38,6 +39,7 @@ scripts/run_redteam.sh  <kit>   # every defense against our held-out set
 - `redteam/harness.py` -- the matrix, using `evaluate(..., ood_scenarios=...)` which the CLI never exposes
 - `redteam/scenarios/` -- five held-out scenarios, 5/5 valid
 - `docs/report/findings.md` -- the results, written up with the limitations
+- `docs/report/responsible-ai.md` -- the safety statement the rubric requires, done
 
 **The headline: on our held-out set `heuristic_risk` drops from 0.999 to 0.812 with a
 critical violation, and HARIS holds at ASR 0.000.** The breach is `tool_output_manipulation`.
@@ -97,9 +99,18 @@ is worth more than finding another attack.
 This set replaces the AgentDojo bonus track as generalization evidence: fully offline, zero API
 cost, and it is *ours*, which is a stronger novelty claim than running someone else's benchmark.
 
-## 3. The ablation matrix
+## 3. The ablation matrix -- DONE, read the numbers before writing
 
-The report requires at least one ablation. Run the ladder:
+`scripts/run_ablation_stages.sh` removes one HARIS stage at a time, which is the
+ablation the rubric asks for; the baseline ladder below is a benchmark and is also run.
+The result to build the section around: **capability commitment carries the published
+corpus (0.999 -> 0.824 without it), data flow carries the held-out set (1.000 -> 0.602
+without it), and no single stage carries both.** Four of six stages can be removed
+individually with no change to the published score, which is redundancy working as
+intended -- say so, and point at the `everything but trust` row (0.999 -> 0.350) for the
+aggregate.
+
+The baseline ladder, for comparison:
 
 | Configuration | Isolates |
 |---|---|
