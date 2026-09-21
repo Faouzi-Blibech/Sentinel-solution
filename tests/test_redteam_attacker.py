@@ -163,12 +163,34 @@ def test_escalates_away_from_direct_once_it_is_blocked():
     assert attacker.last_strategy != "direct"
 
 
-def test_a_tactic_that_worked_elsewhere_outranks_the_seed():
-    """Cross-scenario learning has to be able to override the opening move."""
+def test_the_seed_opens_whatever_the_ledger_learned_elsewhere():
+    """Regression: letting cross-scenario learning veto the opening move made our
+    attacker WEAKER than the kit's static one.
+
+    Once a defense had stopped a few seeds, the ledger ranked "direct" below every
+    untried variant, so later scenarios never played their own payload. Against
+    `heuristic_risk` on our held-out set the kit's attacker breached two families and ours
+    breached none, and the stage ablation's "no data flow" row moved from 0.798 to 1.000
+    between runs with no change to that stage, because what each arm faced depended on
+    what earlier scenarios had taught the ledger. A seed is written for its own scenario:
+    that another scenario's seed was stopped says nothing about this one.
+    """
+    ledger = StrategyLedger()
+    ledger.observe("direct", -5.0)
+    ledger.observe("encode", 5.0)
+    attacker = AdaptiveAttacker(ledger=ledger)
+    first = attacker.next_mutation(_request(round_=0))
+    assert attacker.last_strategy == "direct"
+    assert first is not None and first.text == SEED_TEXT
+
+
+def test_the_ledger_chooses_the_escalation_once_the_seed_is_stopped():
+    """Cross-scenario learning still matters: it picks what to try after the seed."""
     ledger = StrategyLedger()
     ledger.observe("encode", 5.0)
     attacker = AdaptiveAttacker(ledger=ledger)
     attacker.next_mutation(_request(round_=0))
+    attacker.next_mutation(_request(round_=1, transcript=[_blocked()]))
     assert attacker.last_strategy == "encode"
 
 

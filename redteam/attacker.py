@@ -198,11 +198,12 @@ class AdaptiveAttacker(Attacker):
         # work against *something*, so play it first and escalate only once it is stopped.
         # Exploring on round 0 cost real attack success: it replaced a working payload
         # with a weaker variant, and deny_sensitive scored better under attack than
-        # under the plain seed. The ledger can still override this once it has evidence.
-        if "direct" not in self._tried and self.ledger.score("direct") >= 0:
-            best = candidates[0] if candidates else None
-            if best is None or self.ledger.score(best.name) <= 0:
-                candidates.sort(key=lambda s: s.name != "direct")
+        # under the plain seed. The ledger used to be able to veto the seed too, and that
+        # made this attacker weaker than the kit's static one: a seed stopped in one
+        # scenario says nothing about another scenario's seed. The ledger ranks what
+        # comes after it.
+        if "direct" not in self._tried:
+            candidates.sort(key=lambda s: s.name != "direct")
 
         # A nudge that never changes the ordering, only breaks exact ties reproducibly.
         rng = child_rng(self.seed, "haris_redteam", request.scenario_id, request.round)
