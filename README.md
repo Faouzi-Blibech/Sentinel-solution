@@ -22,33 +22,36 @@ directive-shaped detector reads as an order.
 
 ## Why this design
 
-We measured every defense that ships in the official starter kit before designing anything,
-and HARIS is scored the same way:
+Every defense that ships in the official starter kit, scored by the kit's own scorer on
+the kit pinned in the Dockerfile (40 public scenarios since the organizers' mid-challenge
+update), and on twelve held-out scenarios we wrote:
 
-| Defense | Public (19) | Validation (9) | Held out (12, ours) |
+| Defense | Public (40) | Validation (9) | Held out (12, ours) |
 |---|---|---|---|
-| **HARIS (ours)** | **0.999** | **1.000** | **0.998** |
-| `heuristic_risk` | 0.999 | 1.000 | **0.800** |
-| `provenance` | 0.988 | 0.858 | 0.990 |
-| `keyword` | 0.398 | **ineligible** — utility 0.40 below the 0.50 gate | 0.712 |
-| `allow_all` | 0.131 | — | 0.144 |
+| **HARIS (ours)** | **1.000** | **1.000** | **1.000** |
+| `provenance` | 0.939 — refuses 22% of legitimate actions | 0.858 | 0.990 |
+| `keyword` | 0.526 | **ineligible** — utility 0.40 below the 0.50 gate | 0.506 |
+| `heuristic_risk` | **0.156** — 21 of 21 exfiltrations get through | 1.000 | **0.800** |
+| `deny_sensitive` | 0.137 | 0.767 | 0.753 |
+| `allow_all` | 0.054 | 0.218 | 0.144 |
 
-On all three sets HARIS holds **ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000, DFI 1.000**
-with zero defense errors: it stops every attack while completing every benign task. The
-0.999 on the public split is one unnecessary escalation, described in
-`docs/report/findings.md` §4 rather than tuned away. These are local diagnostics, not
-the jury score.
+The held-out column comes from `scripts/run_redteam.sh`, which drives the same simulator and
+scorer through our harness; each defense's row is the worse of the kit's attacker and ours.
 
-The third column is the one that matters. On twelve scenarios nobody's defense has seen,
-spanning all three domains and **eight attack families**, `heuristic_risk` — the best
-defense in the box, 0.999 on the published corpus — falls to 0.800 and takes critical
-violations on two families. Every one of those attacks succeeds against `allow_all`,
-which is how we know they are live rather than inert.
+On all three sets HARIS holds **ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000** with zero
+defense errors and no unnecessary escalation: it stops every attack while completing every
+benign task, at a p95 latency of about 23 ms. These are local diagnostics, not the jury
+score.
 
-Two things follow. The published scenario library is **already solved** by a defense every team
-was handed, so optimizing against it proves nothing. And `keyword` failing the *utility* gate is
-a measured demonstration that keyword matching does not merely miss attacks — it destroys the
-agent's usefulness.
+`heuristic_risk` was the best defense in the box on the original 19 public scenarios
+(0.999). The organizers then added 21 exfiltration scenarios, and it lets every one of them
+through. On our held-out set it takes critical violations on two families it had never
+seen. That is the pattern HARIS is built to avoid: a defense tuned on a corpus is one
+unfamiliar payload shape from collapse, while a structural rule has nothing to be tuned.
+
+We also ran the kit's agent on a **real local model (Qwen 3.5 9B through Ollama)** instead
+of the scripted mock, and fixed a series of security defects in HARIS and in our own
+evaluation tooling along the way. Both are in **[`docs/report/report.md`](docs/report/report.md)**.
 
 So our contribution is not another scenario-passing defense. It is:
 
@@ -62,11 +65,15 @@ So our contribution is not another scenario-passing defense. It is:
 
 ```
 DefenseRequest
-   -> 1. Trust resolution     where did every observed span come from?
-   -> 2. Plan commitment      did the authenticated goal authorize this capability?
-   -> 3. Data-flow check      does sensitive data reach an external sink, in any encoding?
-   -> 4. Risk fusion          calibrated probability, decomposed into signals
-   -> 5. Decision + rewrite   allow / block / escalate / substitute something safer
+   -> target_action()          judge the action that would take effect, not a confirmation wrapper
+   -> trust and taint          where did every observed span come from, and what is secret in it?
+   -> instruction authority    is the agent carrying out an order it read in untrusted text?
+   -> memory authority         is recalled memory standing in for a permission nobody gave?
+   -> capability commitment    did the authenticated goal and the policy authorize this?
+   -> confirmation lifecycle   is a consequential action backed by a RECORDED human approval?
+   -> data flow                does sensitive data reach a sink it may not, in any encoding?
+   -> fusion                   one calibrated risk, decomposed into named signals
+   -> decision + rewrite       allow / block / escalate / a verified-clean safer equivalent
 DefenseDecision
 ```
 
@@ -83,7 +90,7 @@ the official score multiplies by an `efficiency_factor` derived from it.
 | `docs/superpowers/specs/` | Design specification and its reasoning |
 | `docs/superpowers/plans/` | Task-by-task implementation plan |
 | `docs/team/` | Workstream briefs |
-| `docs/report/` | Technical report |
+| `docs/report/` | Evaluation and security report, evidence tables, Responsible-AI statement |
 
 ## Quick start
 
@@ -125,16 +132,22 @@ rejects any run in which a decision failed to reach the defense.
 scripts/run_redteam.sh /path/to/Sentinel_Starter_Kit
 ```
 
-Five held-out scenarios we wrote, plus an adaptive attacker that reads the defense's own
-decisions from `request.transcript` -- which the attacker shipped in the kit does not.
+Twelve held-out scenarios we wrote -- three domains, eight attack families, four hard
+negatives -- plus an adaptive attacker that reads the defense's own decisions from
+`request.transcript`, which the attacker shipped in the kit does not. It always opens with
+the scenario's own payload and escalates only once that is stopped.
 
-On that held-out set the shipped `heuristic_risk` defense falls from **0.999 to 0.812**
-with a critical violation, while HARIS holds at **ASR 0.000**. The breach is a directive
-carried inside a record-shaped payload: invisible to a defense keyed on
-instruction-shaped language, plainly untrusted to one keyed on provenance.
+```bash
+scripts/run_ablation.sh        /path/to/Sentinel_Starter_Kit public   # baseline ladder, published split
+scripts/run_ablation_stages.sh /path/to/Sentinel_Starter_Kit          # HARIS minus one stage at a time
+```
 
-Full results and limitations, including what our red-team does *not* establish:
-`docs/report/findings.md`.
+Every script serves this checkout on a free port, refuses to start unless it makes a real
+decision, and refuses to report a run in which a decision never reached the defense.
+
+The report: [`docs/report/report.md`](docs/report/report.md). The evidence tables behind it:
+[`docs/report/findings.md`](docs/report/findings.md). What HARIS protects against, where it
+fails, and when it asks a human: [`docs/report/responsible-ai.md`](docs/report/responsible-ai.md).
 
 ## Trace viewer
 
