@@ -107,8 +107,9 @@ Baselines that ship in the kit, measured by us:
 | `keyword` | 0.398 | **ineligible** (utility 0.40 < 0.50 gate) |
 | `allow_all` | 0.131 | — |
 
-Held-out set (five scenarios we wrote, `scripts/run_redteam.sh`): HARIS **1.000**,
-`heuristic_risk` **0.812** with a critical violation. That gap is the submission's
+Held-out set (twelve scenarios we wrote, three domains, eight attack families,
+`scripts/run_redteam.sh`): HARIS **0.998**, `heuristic_risk` **0.800** with critical
+violations on `data_exfiltration` and `tool_output_manipulation`. That gap is the submission's
 headline evidence.
 
 **The published scenario library is already solved by the shipped baseline.** Do not spend time

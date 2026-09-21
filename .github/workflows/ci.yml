@@ -1,0 +1,97 @@
+name: CI
+
+# The design doc promised CI twice and there was none, so three guarantees rested on
+# nobody making a mistake: the suite passing, the container being able to decide, and
+# the defense containing no scenario-specific hard-coding. The last is a
+# disqualification rule, which is not something to enforce by memory.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone the starter kit
+        # The contract types live in the organizers' kit, which is not on PyPI. The
+        # no-hardcoding audit also needs the scenario corpus to search against, and it
+        # skips silently without it -- so a CI run without this step would be green and
+        # meaningless.
+        run: git clone --depth 1 https://github.com/Skan22/Sentinel_Starter_Kit.git "$RUNNER_TEMP/kit"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev]"
+          uv pip install "$RUNNER_TEMP/kit"
+
+      - name: Test suite
+        env:
+          SENTINEL_KIT: ${{ runner.temp }}/kit
+        run: uv run --python 3.12 pytest -q
+
+      - name: The no-hardcoding audit must actually run, not skip
+        env:
+          SENTINEL_KIT: ${{ runner.temp }}/kit
+        run: |
+          uv run --python 3.12 pytest tests/test_no_hardcoding.py -q -rs 2>&1 | tee audit.log
+          if grep -qi "skipped" audit.log; then
+            echo "::error::the disqualification audit skipped; the kit was not found"
+            exit 1
+          fi
+
+  container:
+    name: container serves a real decision
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -t haris:ci .
+
+      - name: Run
+        run: |
+          docker run -d --name haris-ci -p 8080:8080 haris:ci
+          for _ in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+      - name: Readiness must be true, not merely 200
+        # The image once shipped without the contract package. /healthz returned ok
+        # while every decision fell through to the safe fallback, so the container
+        # escalated everything and looked healthy doing it.
+        run: |
+          curl -sf http://127.0.0.1:8080/healthz | tee health.json
+          python -c "import json,sys; sys.exit(0 if json.load(open('health.json'))['ready'] else 1)"
+
+      - name: A real decision, and it must not be the internal-error fallback
+        run: |
+          curl -sf -X POST http://127.0.0.1:8080/v1/decision \
+            -H 'content-type: application/json' \
+            -d @.github/workflows/probe-request.json | tee decision.json
+          python - <<'PY'
+          import json, sys
+          body = json.load(open("decision.json"))
+          assert body["decision"] in {"allow", "block", "escalate", "rewrite"}, body
+          if "HARIS_INTERNAL_ERROR" in body["reason_codes"]:
+              sys.exit("container cannot evaluate: the contract package is missing")
+          print("decision:", body["decision"], body["reason_codes"])
+          PY
+
+      - name: Logs on failure
+        if: failure()
+        run: docker logs haris-ci

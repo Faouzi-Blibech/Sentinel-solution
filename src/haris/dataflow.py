@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from sentinel.core.actions import ActionType
+from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.encodings import normalize, variants
@@ -72,6 +73,12 @@ def assess_dataflow(
     action = target_action(request.candidate_action)
     payload = action.text_payload()
     tainted = extract_tainted_values(view)
+    # The top sensitivity is copy-restricted, not merely export-restricted. In the kit
+    # this is modelled per canary and the SOC service token's allowed_destinations is
+    # empty: it may reach no sink at all. Keying only on 'external' meant a restricted
+    # credential written into an internal incident note passed silently, which is how
+    # our own held-out SOC scenario beat this defense.
+    restricted = extract_tainted_values(view, Sensitivity.RESTRICTED)
 
     destinations = _destinations(action.arguments) if action.type is ActionType.TOOL_CALL else []
     destination_class = _destination_class(destinations, policy)
@@ -88,7 +95,9 @@ def assess_dataflow(
             if hit_encoding:
                 break
 
-    leaking_externally = bool(hit_encoding) and destination_class == "external"
+    writes_a_record = action.type in (ActionType.TOOL_CALL, ActionType.MEMORY_WRITE)
+    copied_restricted = bool(hit_value) and hit_value in restricted and writes_a_record
+    leaking = bool(hit_encoding) and (destination_class == "external" or copied_restricted)
     obfuscated = bool(hit_encoding) and hit_encoding != "plain"
 
     metadata: dict[str, Any] = {
@@ -97,6 +106,7 @@ def assess_dataflow(
         "encoding": hit_encoding or "none",
         "tainted_value_count": len(tainted),
         "tainted_hit": (hit_value[:6] + "...") if hit_value else "",
+        "restricted_copy": copied_restricted,
     }
 
     return (
@@ -104,8 +114,12 @@ def assess_dataflow(
             Signal(
                 code=SENSITIVE_TO_EXTERNAL_SINK,
                 weight=SINK_WEIGHT,
-                value=1.0 if leaking_externally else 0.0,
-                detail=f"{destination_class} sink, encoding={hit_encoding or 'none'}",
+                value=1.0 if leaking else 0.0,
+                detail=(
+                    f"restricted value copied into a {destination_class} sink"
+                    if copied_restricted
+                    else f"{destination_class} sink, encoding={hit_encoding or 'none'}"
+                ),
             ),
             Signal(
                 code=ENCODED_PAYLOAD_DETECTED,

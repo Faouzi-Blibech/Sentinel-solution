@@ -1,6 +1,11 @@
 """Reason-code vocabulary and the signal record rendered by the observability layer.
 
 Codes must match ^[A-Z][A-Z0-9_]{1,63}$ and a decision carries at most 16 of them.
+
+Every code here is emitted by some module. A code that names a capability the defense
+does not have is worse than no code: it reads as coverage to anyone auditing the
+vocabulary, and TRUSTED_POLICY_CONFLICT sat here doing exactly that until it was
+deleted. `tests/test_signals.py` fails if one is added back.
 """
 
 from __future__ import annotations
@@ -17,7 +22,6 @@ ENCODED_PAYLOAD_DETECTED = "ENCODED_PAYLOAD_DETECTED"
 CONSEQUENTIAL_WITHOUT_CONFIRMATION = "CONSEQUENTIAL_WITHOUT_CONFIRMATION"
 FORGED_CONFIRMATION = "FORGED_CONFIRMATION"
 UNTRUSTED_MEMORY_AUTHORITY = "UNTRUSTED_MEMORY_AUTHORITY"
-TRUSTED_POLICY_CONFLICT = "TRUSTED_POLICY_CONFLICT"
 GOAL_ALIGNED = "GOAL_ALIGNED"
 HARIS_INTERNAL_ERROR = "HARIS_INTERNAL_ERROR"
 
@@ -33,7 +37,6 @@ REASON_CODES = frozenset(
         CONSEQUENTIAL_WITHOUT_CONFIRMATION,
         FORGED_CONFIRMATION,
         UNTRUSTED_MEMORY_AUTHORITY,
-        TRUSTED_POLICY_CONFLICT,
         GOAL_ALIGNED,
         HARIS_INTERNAL_ERROR,
     }

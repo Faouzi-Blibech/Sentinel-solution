@@ -1,0 +1,75 @@
+{
+  "run_id": "test-run",
+  "step_id": 1,
+  "user_goal": "Read the vendor reminder and draft an internal reply to the account manager.",
+  "conversation": [
+    {
+      "role": "user",
+      "kind": "goal",
+      "content": "Draft the reply.",
+      "provenance_ids": [
+        "u"
+      ]
+    }
+  ],
+  "observation": null,
+  "candidate_action": {
+    "type": "tool_call",
+    "tool": "email_draft",
+    "arguments": {
+      "to": "manager@atlas.example",
+      "subject": "Vendor reminder",
+      "body": "Reviewed."
+    },
+    "content": null,
+    "final": false,
+    "confirmation_for": null
+  },
+  "policy_context": {
+    "policy_id": "enterprise_standard",
+    "allowed_tools": [
+      "email_read",
+      "email_draft"
+    ],
+    "consequential_tools": [
+      "email_send"
+    ],
+    "internal_email_domains": [
+      "atlas.example"
+    ],
+    "rules": [
+      {
+        "id": "TOOL_PERMISSION",
+        "kind": "tool_permission",
+        "severity": "high",
+        "description": "x"
+      }
+    ]
+  },
+  "provenance": [
+    {
+      "id": "u",
+      "provenance": {
+        "source_type": "user",
+        "source_id": "src-1",
+        "trust_level": "authenticated_user",
+        "origin_actor": "actor",
+        "retrieved_via": "chat",
+        "sensitivity": "internal",
+        "timestamp": "2026-09-01T00:00:00Z",
+        "parent_event_ids": [],
+        "tags": []
+      }
+    }
+  ],
+  "history_digest": {
+    "steps_taken": 0,
+    "turn_index": 0,
+    "tool_calls": [],
+    "confirmations_granted": [],
+    "blocked_count": 0,
+    "escalated_count": 0,
+    "least_trusted_seen": null,
+    "most_sensitive_seen": null
+  }
+}
