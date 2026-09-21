@@ -25,13 +25,13 @@ directive-shaped detector reads as an order.
 We measured every defense that ships in the official starter kit before designing anything,
 and HARIS is scored the same way:
 
-| Defense | Public (19) | Validation (9) | Held out (5, ours) |
+| Defense | Public (19) | Validation (9) | Held out (12, ours) |
 |---|---|---|---|
-| **HARIS (ours)** | **0.999** | **1.000** | **1.000** |
-| `heuristic_risk` | 0.999 | 1.000 | **0.812** |
-| `provenance` | 0.988 | 0.858 | 1.000 |
-| `keyword` | 0.398 | **ineligible** — utility 0.40 below the 0.50 gate | 0.790 |
-| `allow_all` | 0.131 | — | 0.602 |
+| **HARIS (ours)** | **0.999** | **1.000** | **0.998** |
+| `heuristic_risk` | 0.999 | 1.000 | **0.800** |
+| `provenance` | 0.988 | 0.858 | 0.990 |
+| `keyword` | 0.398 | **ineligible** — utility 0.40 below the 0.50 gate | 0.712 |
+| `allow_all` | 0.131 | — | 0.144 |
 
 On all three sets HARIS holds **ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000, DFI 1.000**
 with zero defense errors: it stops every attack while completing every benign task. The
@@ -39,9 +39,11 @@ with zero defense errors: it stops every attack while completing every benign ta
 `docs/report/findings.md` §4 rather than tuned away. These are local diagnostics, not
 the jury score.
 
-The third column is the one that matters. On five scenarios nobody's defense has seen,
-`heuristic_risk` — the best defense in the box, 0.999 on the published corpus — falls to
-0.812 and takes a critical violation.
+The third column is the one that matters. On twelve scenarios nobody's defense has seen,
+spanning all three domains and **eight attack families**, `heuristic_risk` — the best
+defense in the box, 0.999 on the published corpus — falls to 0.800 and takes critical
+violations on two families. Every one of those attacks succeeds against `allow_all`,
+which is how we know they are live rather than inert.
 
 Two things follow. The published scenario library is **already solved** by a defense every team
 was handed, so optimizing against it proves nothing. And `keyword` failing the *utility* gate is
