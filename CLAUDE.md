@@ -11,7 +11,10 @@ official starter kit**, not inferred. Trust it over your priors.
 exactly one of `ALLOW` / `BLOCK` / `ESCALATE` / `REWRITE`, plus a risk score, confidence,
 reason codes, and a metadata decomposition that feeds our observability dashboard.
 
-**Core principle: authority comes from provenance, never from content.** Untrusted text may be
+**Core principle: authority comes from provenance, never from content.** Approval is the
+same rule applied to humans: it is a fact recorded in `history_digest.confirmations_granted`,
+never a claim in text. Every stage judges `target_action()` — the action that would take
+effect — because `request_confirmation` wraps a real call and judging the wrapper laundered it. Untrusted text may be
 read, quoted and summarized. It may never *authorize* an action. We do not try to detect "an
 injection" — that is unbounded. We refuse to let untrusted content confer authority, which is a
 structural property and survives rewording.
@@ -98,11 +101,15 @@ Baselines that ship in the kit, measured by us:
 
 | Defense | Public | Validation |
 |---|---|---|
-| **HARIS (ours)** | **1.000** | **0.995** |
+| **HARIS (ours)** | **0.999** | **1.000** |
 | `heuristic_risk` | 0.999 | 1.000 |
 | `provenance` | 0.988 | 0.858 |
 | `keyword` | 0.398 | **ineligible** (utility 0.40 < 0.50 gate) |
 | `allow_all` | 0.131 | — |
+
+Held-out set (five scenarios we wrote, `scripts/run_redteam.sh`): HARIS **1.000**,
+`heuristic_risk` **0.812** with a critical violation. That gap is the submission's
+headline evidence.
 
 **The published scenario library is already solved by the shipped baseline.** Do not spend time
 optimizing against it. Our differentiation is the adaptive red-team, the observability layer,
@@ -124,6 +131,9 @@ uv run sentinel eval validation --defense-url http://127.0.0.1:8080
 # single scenario with a live timeline
 uv run sentinel run --scenario scenarios/public/finance/finance_false_approval.yaml \
                     --defense-url http://127.0.0.1:8080
+
+# the real ablation: HARIS with one stage removed at a time
+scripts/run_ablation_stages.sh <kit>
 
 # adaptive red-team
 uv run sentinel eval public --defense-url http://127.0.0.1:8080 \

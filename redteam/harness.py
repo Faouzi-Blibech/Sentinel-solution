@@ -36,13 +36,28 @@ class Arm:
     defense: str | None = None
     defense_url: str | None = None
     attacker: str = "none"
+    # An in-process HARIS, optionally with stages switched off. This is the only way to
+    # measure what one component of OUR defense contributes: every other arm is a
+    # different codebase, which makes for a benchmark rather than an ablation.
+    in_process: bool = False
+    ablate: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if bool(self.defense) == bool(self.defense_url):
-            raise ValueError(f"arm {self.label!r} needs exactly one of defense or defense_url")
+        sources = [bool(self.defense), bool(self.defense_url), self.in_process]
+        if sum(sources) != 1:
+            raise ValueError(
+                f"arm {self.label!r} needs exactly one of defense, defense_url or in_process"
+            )
+        if self.ablate and not self.in_process:
+            raise ValueError(f"arm {self.label!r} ablates stages but is not in_process")
 
 
 def defense_factory(arm: Arm, competition: CompetitionConfig) -> Callable[[], Defense]:
+    if arm.in_process:
+        from haris.defense import variant
+
+        return variant(arm.label, *arm.ablate)
+
     if arm.defense_url:
         from sentinel.defenses.client import HttpDefense
 
@@ -226,6 +241,26 @@ DEFAULT_ARMS = (
     Arm(label="provenance +ours", defense="provenance", attacker="adaptive"),
 )
 
+# The real ablation: the SAME defense with one stage removed at a time, so each row
+# attributes an outcome to a component rather than to a different codebase. Comparing
+# HARIS with somebody else's baseline is a benchmark, not an ablation, and the rubric
+# asks for the latter.
+ABLATION_ARMS = (
+    Arm(label="haris: no authority", in_process=True, ablate=("authority",), attacker="adaptive"),
+    Arm(label="haris: no memory rule", in_process=True, ablate=("memory",), attacker="adaptive"),
+    Arm(label="haris: no plan commitment", in_process=True, ablate=("plan",), attacker="adaptive"),
+    Arm(label="haris: no lifecycle gate", in_process=True, ablate=("lifecycle",), attacker="adaptive"),
+    Arm(label="haris: no data flow", in_process=True, ablate=("dataflow",), attacker="adaptive"),
+    Arm(label="haris: no rewrite", in_process=True, ablate=("rewrite",), attacker="adaptive"),
+    Arm(
+        label="haris: trust only",
+        in_process=True,
+        ablate=("plan", "lifecycle", "dataflow", "rewrite", "memory"),
+        attacker="adaptive",
+    ),
+    Arm(label="haris: full (in-process)", in_process=True, attacker="adaptive"),
+)
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
@@ -238,10 +273,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--scenarios", type=Path, default=None, help="run these instead of a split")
     parser.add_argument("--artifacts", type=Path, default=Path("artifacts/redteam"))
     parser.add_argument("--out", type=Path, default=Path("docs/report/ablation.json"))
+    parser.add_argument(
+        "--ablation",
+        action="store_true",
+        help="run HARIS with one stage removed at a time instead of the baseline ladder",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    arms = list(DEFAULT_ARMS)
-    if args.defense_url:
+    arms = list(ABLATION_ARMS) if args.ablation else list(DEFAULT_ARMS)
+    if args.defense_url and not args.ablation:
         arms.append(Arm(label="haris +shipped", defense_url=args.defense_url, attacker="mutation"))
         arms.append(Arm(label="haris +ours", defense_url=args.defense_url, attacker="adaptive"))
 
