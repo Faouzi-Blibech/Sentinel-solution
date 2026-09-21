@@ -40,8 +40,13 @@ _SECOND_PERSON_DIRECTIVE = re.compile(
     r"\b(you\s+(must|should|need\s+to|are\s+required\s+to)|do\s+not|don't|never|always)\b",
     re.IGNORECASE,
 )
+# Every pattern here reads text an attacker controls, so none may backtrack. The obvious
+# `[.!?\n]\s*` let each newline of a blank run rescan all the ones after it: 8,000
+# newlines held a decision for 4.4 seconds against a 5-second timeout that fails closed.
+# A newline is itself a sentence boundary, so after the boundary only same-line
+# whitespace is needed, and the match is the same. See tests/test_redos.py.
 _IMPERATIVE_OPENER = re.compile(
-    r"(?:^|[.!?\n]\s*)(send|forward|email|upload|post|transfer|execute|confirm|approve|close|"
+    r"(?:^|[.!?\n])[^\S\n]*(send|forward|email|upload|post|transfer|execute|confirm|approve|close|"
     r"disable|delete|ignore|disregard|override|reveal|share|export|append|remember|store|kindly)\b",
     re.IGNORECASE,
 )
@@ -55,12 +60,16 @@ _AGENT_ADDRESS = re.compile(
 # the simulator's own agent acts on, `call <tool> with {json}` -- scored zero here.
 _TOOL_SHAPED = re.compile(
     r"\b[a-z][a-z0-9_]{2,}\s*\(\s*[{\"']"
-    r"|\b(?:call|invoke|run|execute|perform)\s+[a-z][a-z0-9_]{2,}\s*(?:with|using)?\s*[{\(]",
+    # `\s*(?:with|using)?\s*` gave two adjacent whitespace runs a quadratic number of ways
+    # to split a long gap; the whitespace after "with" now belongs to that word alone.
+    r"|\b(?:call|invoke|run|execute|perform)\s+[a-z][a-z0-9_]{2,}\s*(?:(?:with|using)\s*)?[{\(]",
     re.IGNORECASE,
 )
 # Text instructing the agent to persist something is a directive even without a verb
 # opener: it is how a poisoned memory gets planted for a later turn.
-_MEMORY_DIRECTIVE = re.compile(r"(?:^|[.!?\n]\s*)(remember|note\s+to\s+self|store\s+this)\s*:", re.IGNORECASE)
+_MEMORY_DIRECTIVE = re.compile(
+    r"(?:^|[.!?\n])[^\S\n]*(remember|note\s+to\s+self|store\s+this)\s*:", re.IGNORECASE
+)
 
 # The same two tool-call shapes as _TOOL_SHAPED, capturing the tool named and stopping at
 # the opening brace of the argument block the text dictates for it.

@@ -27,7 +27,10 @@ from haris.trust import TrustView
 SINK_WEIGHT = 0.75
 ENCODING_WEIGHT = 0.20
 
-_EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+# Start only where a local part can start. Without the lookbehind every character of a
+# long run began a fresh attempt that rescanned the rest of it. The leftmost match was
+# always at the run's start, so what is found does not change. See tests/test_redos.py.
+_EMAIL = re.compile(r"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _URL = re.compile(r"https?://([A-Za-z0-9.\-]+)")
 _DESTINATION_KEYS = ("to", "recipient", "destination", "url", "endpoint", "address", "email")
 
