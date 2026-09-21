@@ -97,24 +97,28 @@ official = core x critical_penalty x ood_factor x efficiency_factor
 - `efficiency_factor` penalizes **p95 latency** — this is why the decision path is deterministic
   and no model runs on it.
 
-Baselines that ship in the kit, measured by us:
+Every shipped baseline, scored by the kit's own scorer on the pinned kit (`dd2e5fe`, 40
+public scenarios since the organizers added 21 exfiltration scenarios mid-challenge):
 
-| Defense | Public | Validation |
-|---|---|---|
-| **HARIS (ours)** | **0.999** | **1.000** |
-| `heuristic_risk` | 0.999 | 1.000 |
-| `provenance` | 0.988 | 0.858 |
-| `keyword` | 0.398 | **ineligible** (utility 0.40 < 0.50 gate) |
-| `allow_all` | 0.131 | — |
+| Defense | Public (40) | Validation (9) | Held out (12, ours) |
+|---|---|---|---|
+| **HARIS (ours)** | **1.000** | **1.000** | **1.000** |
+| `provenance` | 0.939 (FBR 0.222) | 0.858 | 0.990 |
+| `keyword` | 0.526 | **ineligible** (utility 0.40 < 0.50 gate) | 0.506 |
+| `heuristic_risk` | **0.156** (0/21 exfiltrations held) | 1.000 | **0.800** |
+| `deny_sensitive` | 0.137 | 0.767 | 0.753 |
+| `allow_all` | 0.054 | 0.218 | 0.144 |
 
-Held-out set (twelve scenarios we wrote, three domains, eight attack families,
-`scripts/run_redteam.sh`): HARIS **0.998**, `heuristic_risk` **0.800** with critical
-violations on `data_exfiltration` and `tool_output_manipulation`. That gap is the submission's
-headline evidence.
+`heuristic_risk` scored 0.999 on the original 19 public scenarios and collapses on the 21
+the organizers added; on our held-out set it takes critical violations on
+`data_exfiltration` and `tool_output_manipulation`. That is the headline evidence: a
+defense tuned on a corpus fails on the next one, a structural rule does not.
 
-**The published scenario library is already solved by the shipped baseline.** Do not spend time
-optimizing against it. Our differentiation is the adaptive red-team, the observability layer,
-and the report. `keyword` being *ineligible* is our measured proof that pattern matching fails.
+**Do not tune against the published scenarios.** It would be both pointless and a
+disqualification risk (hard rule 1). Our differentiation is the structural rule, the
+adaptive red-team, the real-model evaluation, the observability layer, and the report
+(`docs/report/report.md`). `keyword` being *ineligible* is our measured proof that
+pattern matching fails.
 
 ## Commands
 

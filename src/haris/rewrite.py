@@ -27,7 +27,7 @@ from collections.abc import Iterable
 
 from sentinel.core.actions import ActionType, CandidateAction
 
-from haris.encodings import normalize
+from haris.encodings import normalize, reveals_any
 from haris.policy import PolicyView
 from haris.signals import GOAL_PROHIBITION, SENSITIVE_TO_EXTERNAL_SINK
 
@@ -62,10 +62,13 @@ def _redact(text: str, tainted: Iterable[str]) -> tuple[str, bool]:
 
     def replace(match: re.Match[str]) -> str:
         nonlocal changed
-        if normalize(match.group(0)) in needles:
+        token = match.group(0)
+        # A token is redacted if it IS a secret or DECODES to one. Matching only the
+        # plain form left base64 and hex copies of a secret in place.
+        if normalize(token) in needles or reveals_any(token, needles):
             changed = True
             return REDACTION
-        return match.group(0)
+        return token
 
     return _TOKEN.sub(replace, text), changed
 
@@ -93,11 +96,15 @@ def _redact_arguments(
     return out, changed
 
 
-def _still_leaks(arguments: dict[str, object], tainted: Iterable[str]) -> bool:
-    """A tainted value can survive redaction by being the destination itself."""
+def _still_leaks(arguments: dict[str, object], tainted: Iterable[str], content: str = "") -> bool:
+    """Does anything in the rewritten action still reveal a secret, in any encoding?
+
+    Checking only the plain text is how a rewrite once forwarded a base64 copy of the
+    very token it had just redacted: the detector decoded it, this check did not.
+    """
     needles = {n for n in tainted if n}
-    rendered = normalize(" ".join(str(v) for v in arguments.values()))
-    return any(needle in rendered for needle in needles)
+    rendered = " ".join([str(v) for v in arguments.values()] + [content])
+    return bool(reveals_any(rendered, needles))
 
 
 def safer_alternative(
@@ -124,7 +131,8 @@ def safer_alternative(
 
     if action.type in (ActionType.RESPOND, ActionType.MEMORY_WRITE) and action.content:
         redacted, changed = _redact(action.content, tainted or ())
-        if changed:
+        # A redaction that leaves an encoded copy behind is not a mitigation.
+        if changed and not _still_leaks({}, tainted or (), redacted):
             try:
                 return CandidateAction(type=action.type, content=redacted, final=action.final)
             except ValueError:

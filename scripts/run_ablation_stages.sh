@@ -12,14 +12,16 @@ set -euo pipefail
 . "$(dirname "$0")/_uv.sh"
 KIT="${1:?path to Sentinel_Starter_Kit}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$KIT" && pwd)"
 
 # The kit's artifact store creates event files exclusively, so a previous run of the
 # same arm makes this abort rather than overwrite. Start each ablation from clean.
 rm -rf "$KIT/artifacts/ablation"
 
-$UV run --python 3.12 python -m redteam.harness \
+# From the repo root: `python -m redteam.harness` resolves the package from there.
+( cd "$HERE" && $UV run --python 3.12 python -m redteam.harness \
   --kit "$KIT" \
   --scenarios "$HERE/redteam/scenarios" \
   --ablation \
   --artifacts "$KIT/artifacts/ablation" \
-  --out "$HERE/docs/report/ablation-stages.json"
+  --out "$HERE/docs/report/ablation-stages.json" )

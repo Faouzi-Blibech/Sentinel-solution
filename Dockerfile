@@ -5,8 +5,11 @@ WORKDIR /app
 # The contract types HARIS decides against live in the organizers' kit, which is not on
 # PyPI. It was declared nowhere, so `pip install .` produced an image whose every
 # decision was HARIS_INTERNAL_ERROR while /healthz still reported ok. Install it
-# explicitly, and pin the ref so a rebuild is reproducible.
-ARG SENTINEL_REF=main
+# explicitly, pinned to the exact commit every number in docs/report was measured
+# against. A branch name is not a pin: the organizers pushed 8 commits, 21 scenarios and a
+# new agent backend to `main` during the challenge, and an image built from `main` would
+# have been a version nobody had tested.
+ARG SENTINEL_REF=dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2
 ARG SENTINEL_REPO=https://github.com/Skan22/Sentinel_Starter_Kit.git
 
 RUN apt-get update \

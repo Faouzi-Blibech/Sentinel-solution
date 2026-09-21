@@ -49,8 +49,8 @@ def test_attacker_factory_rejects_unknown_names():
 
 def test_by_family_counts_held_and_breached():
     table = by_family(_Report.outcomes, MAPPING)
-    assert table["indirect_prompt_injection"] == {"scenarios": 1, "held": 0, "breached": 1}
-    assert table["data_exfiltration"] == {"scenarios": 1, "held": 1, "breached": 0}
+    assert table["indirect_prompt_injection"] == {"scenarios": 1, "held": 0, "breached": 1, "invalid": 0, "untested": 0}
+    assert table["data_exfiltration"] == {"scenarios": 1, "held": 1, "breached": 0, "invalid": 0, "untested": 0}
 
 
 def test_summarize_records_breaches_by_name():

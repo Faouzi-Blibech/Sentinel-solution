@@ -21,10 +21,16 @@ from haris.secrets import extract_tainted_values
 from haris.signals import ENCODED_PAYLOAD_DETECTED, SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
 
-SINK_WEIGHT = 0.60
+# A secret reaching a sink it may not reach is a policy violation, not a judgement call,
+# so on its own it sits above block_threshold and the risk score agrees with the
+# engine's rule that a leak is blocked or cleanly rewritten, never escalated.
+SINK_WEIGHT = 0.75
 ENCODING_WEIGHT = 0.20
 
-_EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+# Start only where a local part can start. Without the lookbehind every character of a
+# long run began a fresh attempt that rescanned the rest of it. The leftmost match was
+# always at the run's start, so what is found does not change. See tests/test_redos.py.
+_EMAIL = re.compile(r"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _URL = re.compile(r"https?://([A-Za-z0-9.\-]+)")
 _DESTINATION_KEYS = ("to", "recipient", "destination", "url", "endpoint", "address", "email")
 
@@ -83,27 +89,47 @@ def assess_dataflow(
     destinations = _destinations(action.arguments) if action.type is ActionType.TOOL_CALL else []
     destination_class = _destination_class(destinations, policy)
 
-    hit_encoding = ""
-    hit_value = ""
-    if tainted and payload:
+    # Every hit, in a fixed order. Stopping at the first needle of a *set* made the
+    # verdict depend on PYTHONHASHSEED, and let a confidential value in the same payload
+    # hide a restricted one from the copy rule below.
+    ordered = sorted(n for n in tainted if n)
+    hits: list[tuple[str, str]] = []
+    plain_hits: set[str] = set()
+    if ordered and payload:
         for encoding, decoded in variants(payload):
             haystack = normalize(decoded)
-            for needle in tainted:
-                if needle and needle in haystack:
-                    hit_encoding, hit_value = encoding, needle
-                    break
-            if hit_encoding:
-                break
+            for needle in ordered:
+                if needle in haystack:
+                    hits.append((encoding, needle))
+                    if encoding == "plain":
+                        plain_hits.add(needle)
 
-    writes_a_record = action.type in (ActionType.TOOL_CALL, ActionType.MEMORY_WRITE)
-    copied_restricted = bool(hit_value) and hit_value in restricted and writes_a_record
-    leaking = bool(hit_encoding) and (destination_class == "external" or copied_restricted)
-    obfuscated = bool(hit_encoding) and hit_encoding != "plain"
+    # Identifiers the authenticated user named are theirs to work with. Restricted records
+    # carry hostnames and asset ids alongside the secret, and echoing the host the user
+    # asked about into a note is the task, not a leak.
+    named_by_user = normalize(request.user_goal)
+    restricted_hits = sorted(
+        needle for _, needle in hits if needle in restricted and needle not in named_by_user
+    )
+    # The kit sinks a final answer as `user_response`. A restricted canary allows no
+    # destination at all -- the user included -- so the answer counts here too.
+    writes_a_sink = action.type in (ActionType.TOOL_CALL, ActionType.MEMORY_WRITE, ActionType.RESPOND)
+    copied_restricted = bool(restricted_hits) and writes_a_sink
+    external_hits = [needle for _, needle in hits] if destination_class == "external" else []
+    leaking = bool(external_hits) or copied_restricted
+    # Encoded only if a needle surfaced in a decoding and NOT in the plain text: the url
+    # variant of ordinary text is the text itself and would otherwise always "match".
+    obfuscated_hits = sorted({needle for encoding, needle in hits if encoding != "plain"} - plain_hits)
+    obfuscated = leaking and bool(obfuscated_hits)
+
+    hit_value = (restricted_hits or obfuscated_hits or sorted(plain_hits) or [""])[0]
+    hit_encoding = next((e for e, n in hits if n == hit_value and (e != "plain") == (n in obfuscated_hits)), "")
 
     metadata: dict[str, Any] = {
         "destination_class": destination_class,
         "destinations": destinations[:3],
         "encoding": hit_encoding or "none",
+        "hits": len({needle for _, needle in hits}),
         "tainted_value_count": len(tainted),
         "tainted_hit": (hit_value[:6] + "...") if hit_value else "",
         "restricted_copy": copied_restricted,
@@ -116,7 +142,7 @@ def assess_dataflow(
                 weight=SINK_WEIGHT,
                 value=1.0 if leaking else 0.0,
                 detail=(
-                    f"restricted value copied into a {destination_class} sink"
+                    f"restricted value copied into a {action.type.value} ({destination_class} destination)"
                     if copied_restricted
                     else f"{destination_class} sink, encoding={hit_encoding or 'none'}"
                 ),

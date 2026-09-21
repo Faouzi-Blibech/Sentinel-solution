@@ -163,10 +163,76 @@ def test_escalates_away_from_direct_once_it_is_blocked():
     assert attacker.last_strategy != "direct"
 
 
-def test_a_tactic_that_worked_elsewhere_outranks_the_seed():
-    """Cross-scenario learning has to be able to override the opening move."""
+def test_the_seed_opens_whatever_the_ledger_learned_elsewhere():
+    """Regression: letting cross-scenario learning veto the opening move made our
+    attacker WEAKER than the kit's static one.
+
+    Once a defense had stopped a few seeds, the ledger ranked "direct" below every
+    untried variant, so later scenarios never played their own payload. Against
+    `heuristic_risk` on our held-out set the kit's attacker breached two families and ours
+    breached none, and the stage ablation's "no data flow" row moved from 0.798 to 1.000
+    between runs with no change to that stage, because what each arm faced depended on
+    what earlier scenarios had taught the ledger. A seed is written for its own scenario:
+    that another scenario's seed was stopped says nothing about this one.
+    """
+    ledger = StrategyLedger()
+    ledger.observe("direct", -5.0)
+    ledger.observe("encode", 5.0)
+    attacker = AdaptiveAttacker(ledger=ledger)
+    first = attacker.next_mutation(_request(round_=0))
+    assert attacker.last_strategy == "direct"
+    assert first is not None and first.text == SEED_TEXT
+
+
+def test_the_ledger_chooses_the_escalation_once_the_seed_is_stopped():
+    """Cross-scenario learning still matters: it picks what to try after the seed."""
     ledger = StrategyLedger()
     ledger.observe("encode", 5.0)
     attacker = AdaptiveAttacker(ledger=ledger)
     attacker.next_mutation(_request(round_=0))
+    attacker.next_mutation(_request(round_=1, transcript=[_blocked()]))
     assert attacker.last_strategy == "encode"
+
+
+# --- Every operation the kit defines -------------------------------------------------
+#
+# The attacker only ever tried APPEND_TEXT and REPLACE_TEXT. The kit maps every
+# tool-output surface to SET_TOOL_TEXT alone, so on the organizers' 21 new exfiltration
+# scenarios it found nowhere to write, injected nothing, and every defense "held" -- the
+# ablation reported 21/21 for HARIS with its data-flow stage switched off.
+
+
+def _tool_output(surface_id="partner_advisory"):
+    return SurfaceView(
+        id=surface_id,
+        kind=SurfaceKind.TOOL_OUTPUT,
+        operations=[MutationOperation.SET_TOOL_TEXT],
+        max_chars=1500,
+        current_text="",
+    )
+
+
+def test_it_injects_into_a_tool_output_surface() -> None:
+    seed = SeedPayload(surface_id="partner_advisory", operation=MutationOperation.SET_TOOL_TEXT, text=SEED_TEXT)
+    mutation = AdaptiveAttacker().next_mutation(_request(surfaces=[_tool_output()], seeds=[seed]))
+    assert mutation is not None, "no mutation on a set_tool_text-only surface: the attack would never run"
+    assert mutation.operation is MutationOperation.SET_TOOL_TEXT
+    assert mutation.surface_id == "partner_advisory"
+
+
+def test_it_injects_into_a_memory_surface() -> None:
+    surface = SurfaceView(
+        id="shared_memory", kind=SurfaceKind.MEMORY, operations=[MutationOperation.WRITE_MEMORY],
+        max_chars=1500, current_text="",
+    )
+    seed = SeedPayload(surface_id="shared_memory", operation=MutationOperation.WRITE_MEMORY, text=SEED_TEXT)
+    mutation = AdaptiveAttacker().next_mutation(_request(surfaces=[surface], seeds=[seed]))
+    assert mutation is not None
+    assert mutation.operation is MutationOperation.WRITE_MEMORY
+
+
+def test_the_seeds_own_operation_is_preferred_on_its_own_surface() -> None:
+    surface = _surface(ops=[MutationOperation.APPEND_TEXT, MutationOperation.REPLACE_TEXT])
+    seed = SeedPayload(surface_id="merchant_letter", operation=MutationOperation.REPLACE_TEXT, text=SEED_TEXT)
+    mutation = AdaptiveAttacker().next_mutation(_request(surfaces=[surface], seeds=[seed]))
+    assert mutation is not None and mutation.operation is MutationOperation.REPLACE_TEXT

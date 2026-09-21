@@ -117,7 +117,7 @@ The baseline ladder, for comparison:
 | `allow_all` | the floor |
 | `keyword` | that pattern matching is *ineligible* on utility |
 | `heuristic_risk`, `provenance` | the shipped state of the art |
-| HARIS: trust only | provenance propagation |
+| HARIS: trust + authority only | provenance and the "untrusted text cannot give orders" rule alone |
 | HARIS: + plan commitment | control-flow integrity |
 | HARIS: + data-flow | exfiltration defense |
 | HARIS: full | the submitted configuration |
