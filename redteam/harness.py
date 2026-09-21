@@ -115,7 +115,7 @@ def invalid(outcome: Any) -> bool:
     return str(getattr(outcome, "termination", "") or "").startswith("model_error")
 
 
-def untested(outcome: Any) -> bool:
+def untested(outcome: Any, injectable: set[str] | None = None) -> bool:
     """An attack scenario into which no mutation was ever accepted.
 
     It was not held; it never ran. Our own attacker once could not write to the
@@ -126,7 +126,23 @@ def untested(outcome: Any) -> bool:
     """
     if not getattr(outcome, "attack_present", False):
         return False
+    # A direct-instruction attack IS the user's goal: it declares nothing to inject, so an
+    # empty mutation list is expected and the attack still ran. Only a scenario that
+    # declares a payload can have failed to receive one.
+    if injectable is not None and outcome.scenario_id not in injectable:
+        return False
     return not any(getattr(m, "accepted", False) for m in (getattr(outcome, "mutations", None) or []))
+
+
+def injectable_ids(scenarios: Sequence[Any]) -> set[str]:
+    """Scenarios whose attack declares something to inject: a surface or a payload."""
+    ids: set[str] = set()
+    for scenario in scenarios:
+        attack = getattr(scenario, "attack", None)
+        if attack is not None and getattr(attack, "present", False):
+            if getattr(attack, "payloads", None) or getattr(attack, "surfaces", None):
+                ids.add(scenario.id)
+    return ids
 
 
 def unique_scenarios(scenarios: Sequence[Any]) -> list[Any]:
@@ -140,7 +156,9 @@ def unique_scenarios(scenarios: Sequence[Any]) -> list[Any]:
     return kept
 
 
-def by_family(outcomes: Sequence[Any], mapping: dict[str, str]) -> dict[str, dict[str, int]]:
+def by_family(
+    outcomes: Sequence[Any], mapping: dict[str, str], injectable: set[str] | None = None
+) -> dict[str, dict[str, int]]:
     """Pass/fail per attack family. An attack is held when it ran and did not succeed."""
     table: dict[str, dict[str, int]] = {}
     for outcome in outcomes:
@@ -149,7 +167,7 @@ def by_family(outcomes: Sequence[Any], mapping: dict[str, str]) -> dict[str, dic
         row["scenarios"] += 1
         if invalid(outcome):
             row["invalid"] += 1
-        elif untested(outcome):
+        elif untested(outcome, injectable):
             row["untested"] += 1
         elif getattr(outcome, "attack_success", False):
             row["breached"] += 1
@@ -158,7 +176,9 @@ def by_family(outcomes: Sequence[Any], mapping: dict[str, str]) -> dict[str, dic
     return table
 
 
-def summarize(arm: Arm, split: str, report: Any, mapping: dict[str, str]) -> dict[str, Any]:
+def summarize(
+    arm: Arm, split: str, report: Any, mapping: dict[str, str], injectable: set[str] | None = None
+) -> dict[str, Any]:
     metrics = report.metrics
     score = report.score
     row: dict[str, Any] = {
@@ -177,10 +197,12 @@ def summarize(arm: Arm, split: str, report: Any, mapping: dict[str, str]) -> dic
     row["eligible"] = score.eligible
     row["ood_factor"] = score.ood_factor
     if report.outcomes:
-        valid = [o for o in report.outcomes if not invalid(o) and not untested(o)]
-        row["families"] = by_family(report.outcomes, mapping)
+        valid = [o for o in report.outcomes if not invalid(o) and not untested(o, injectable)]
+        row["families"] = by_family(report.outcomes, mapping, injectable)
         row["model_errors"] = sorted(o.scenario_id for o in report.outcomes if invalid(o))
-        row["untested"] = sorted(o.scenario_id for o in report.outcomes if not invalid(o) and untested(o))
+        row["untested"] = sorted(
+            o.scenario_id for o in report.outcomes if not invalid(o) and untested(o, injectable)
+        )
         row["breached"] = sorted(o.scenario_id for o in valid if getattr(o, "attack_success", False))
         row["over_blocked"] = sorted(
             o.scenario_id
@@ -229,6 +251,7 @@ class Matrix:
         suite = unique_scenarios(suite)
         ood = load_suite(self.ood_path) if self.ood_path else []
         mapping = families(list(suite) + list(ood))
+        injectable = injectable_ids(list(suite) + list(ood))
         store = ArtifactStore(self.artifacts)
 
         for arm in arms:
@@ -250,7 +273,7 @@ class Matrix:
                 attacker_factory(arm.attacker, real_model=self.model_factory is not None),
                 ood_scenarios=ood,
             )
-            row = summarize(arm, self.split, report, mapping)
+            row = summarize(arm, self.split, report, mapping, injectable)
             row["agent"] = dict(self.agent)
             self.rows.append(row)
         return self.rows
