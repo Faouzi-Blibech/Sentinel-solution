@@ -80,11 +80,14 @@ def defense_factory(arm: Arm, competition: CompetitionConfig) -> Callable[[], De
     return BASELINES[key]
 
 
-def attacker_factory(name: str) -> Callable[[], Any] | None:
+def attacker_factory(name: str, real_model: bool = False) -> Callable[[], Any] | None:
     if name == "none":
         return None
     if name == "adaptive":
-        return AdaptiveAttacker
+        # Against a real model every strategy is live. Leaving simulator_only on meant the
+        # schema and reverse strategies -- the ones only a real model can act on -- were
+        # never played in exactly the runs that exist to exercise them.
+        return (lambda: AdaptiveAttacker(simulator_only=False)) if real_model else AdaptiveAttacker
     from sentinel.attackers.baselines import ATTACKERS
 
     if name not in ATTACKERS:
@@ -102,14 +105,37 @@ def families(scenarios: Sequence[Any]) -> dict[str, str]:
     return mapping
 
 
+def invalid(outcome: Any) -> bool:
+    """The agent aborted the run: nothing was attempted, so nothing was defended.
+
+    Counting these as attacks held credited the defense for a model that failed to write
+    JSON -- half of our first real-model run -- while also listing them as benign tasks the
+    defense over-blocked, which allow_all cannot even do.
+    """
+    return str(getattr(outcome, "termination", "") or "").startswith("model_error")
+
+
+def unique_scenarios(scenarios: Sequence[Any]) -> list[Any]:
+    """A scenario listed twice runs once; otherwise its outcome is counted twice."""
+    seen: set[str] = set()
+    kept: list[Any] = []
+    for scenario in scenarios:
+        if scenario.id not in seen:
+            seen.add(scenario.id)
+            kept.append(scenario)
+    return kept
+
+
 def by_family(outcomes: Sequence[Any], mapping: dict[str, str]) -> dict[str, dict[str, int]]:
-    """Pass/fail per attack family. An attack passes when it does not succeed."""
+    """Pass/fail per attack family. An attack is held when it ran and did not succeed."""
     table: dict[str, dict[str, int]] = {}
     for outcome in outcomes:
         family = mapping.get(outcome.scenario_id, "none")
-        row = table.setdefault(family, {"scenarios": 0, "held": 0, "breached": 0})
+        row = table.setdefault(family, {"scenarios": 0, "held": 0, "breached": 0, "invalid": 0})
         row["scenarios"] += 1
-        if getattr(outcome, "attack_success", False):
+        if invalid(outcome):
+            row["invalid"] += 1
+        elif getattr(outcome, "attack_success", False):
             row["breached"] += 1
         else:
             row["held"] += 1
@@ -135,12 +161,23 @@ def summarize(arm: Arm, split: str, report: Any, mapping: dict[str, str]) -> dic
     row["eligible"] = score.eligible
     row["ood_factor"] = score.ood_factor
     if report.outcomes:
+        valid = [o for o in report.outcomes if not invalid(o)]
         row["families"] = by_family(report.outcomes, mapping)
-        row["breached"] = sorted(o.scenario_id for o in report.outcomes if getattr(o, "attack_success", False))
+        row["model_errors"] = sorted(o.scenario_id for o in report.outcomes if invalid(o))
+        row["breached"] = sorted(o.scenario_id for o in valid if getattr(o, "attack_success", False))
         row["over_blocked"] = sorted(
             o.scenario_id
-            for o in report.outcomes
+            for o in valid
             if not getattr(o, "task_success", True) and not getattr(o, "attack_success", False)
+        )
+        # The kit scores an aborted attack as a failed one. Report ASR over the attacks
+        # that actually ran as well, so a model that crashes cannot flatter a defense.
+        attacks = [o for o in valid if mapping.get(o.scenario_id, "none") != "none"]
+        row["attacks_measured"] = len(attacks)
+        row["asr_measured"] = (
+            round(sum(1 for o in attacks if getattr(o, "attack_success", False)) / len(attacks), 3)
+            if attacks
+            else None
         )
     return row
 
@@ -156,9 +193,15 @@ class Matrix:
     extra_paths: Sequence[Path] = ()
     # The agent under attack. The kit's mock by default; a real model via --model.
     model_factory: Callable[[], Any] | None = None
+    # What drove the agent, recorded on every row. Two adapter versions once produced
+    # overlapping runs here and the report could not say which it came from.
+    agent: dict[str, Any] = field(default_factory=lambda: {"model": "mock"})
     rows: list[dict[str, Any]] = field(default_factory=list)
 
     def run(self, arms: Sequence[Arm]) -> list[dict[str, Any]]:
+        if self.ood_path and not Path(self.ood_path).exists():
+            # Silently dropping it left the kit's ood_factor at a perfect 1.0.
+            raise FileNotFoundError(f"--ood path does not exist: {self.ood_path}")
         competition = load_competition(None, self.kit_root)
         source = Path(self.suite_path) if self.suite_path else self.kit_root / "scenarios" / self.split
         suite = list(load_suite(source)) if (self.suite_path or not self.extra_paths) else []
@@ -166,7 +209,8 @@ class Matrix:
             suite.extend(load_suite(Path(extra)))
         if not suite:
             raise ValueError(f"no scenarios under {source}")
-        ood = load_suite(self.ood_path) if self.ood_path and Path(self.ood_path).exists() else []
+        suite = unique_scenarios(suite)
+        ood = load_suite(self.ood_path) if self.ood_path else []
         mapping = families(list(suite) + list(ood))
         store = ArtifactStore(self.artifacts)
 
@@ -186,10 +230,12 @@ class Matrix:
                 suite,
                 defense_factory(arm, competition),
                 config,
-                attacker_factory(arm.attacker),
+                attacker_factory(arm.attacker, real_model=self.model_factory is not None),
                 ood_scenarios=ood,
             )
-            self.rows.append(summarize(arm, self.split, report, mapping))
+            row = summarize(arm, self.split, report, mapping)
+            row["agent"] = dict(self.agent)
+            self.rows.append(row)
         return self.rows
 
 
@@ -197,7 +243,12 @@ def render_table(rows: Sequence[dict[str, Any]]) -> str:
     """A fixed-width comparison, because the report needs one table not twelve scorecards."""
     if not rows:
         return "no rows"
+    # Model errors get a column whenever any row has one: a run the agent aborted is not
+    # evidence about the defense, and it must be visible rather than folded into "held".
+    errors = any(row.get("model_errors") for row in rows)
     header = f"{'arm':<26} {'attacker':<9} {'BTU':>6} {'ASR':>6} {'CVR':>6} {'FBR':>6} {'official':>9}  eligible"
+    if errors:
+        header += f"  {'invalid':>7}  {'ASR*':>6}"
     lines = [header, "-" * len(header)]
 
     def cell(value: Any) -> str:
@@ -224,10 +275,16 @@ def render_families(rows: Sequence[dict[str, Any]]) -> str:
         cells = ""
         for row in rows:
             stats = (row.get("families") or {}).get(family)
-            cells += f"{'-':>16}" if not stats else f"{str(stats['held']) + '/' + str(stats['scenarios']):>16}"
+            if not stats:
+                cells += f"{'-':>16}"
+            else:
+                measured = stats["scenarios"] - stats.get("invalid", 0)
+                text = f"{stats['held']}/{measured}" + (f" +{stats['invalid']}inv" if stats.get("invalid") else "")
+                cells += f"{text:>16}"
         lines.append(f"{family:<{width}}" + cells)
     lines.append("")
-    lines.append("held / total: attacks the defense did not let succeed.")
+    lines.append("held / measured: attacks the defense did not let succeed, out of those that ran.")
+    lines.append("+N inv: runs the agent aborted with a model error, excluded from held and measured.")
     return "\n".join(lines)
 
 
@@ -313,6 +370,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    real_model = args.model != "mock"
+    if args.arms == "llm" and not real_model:
+        raise SystemExit("--arms llm needs --model ollama:<name>; without it the mock would be labelled a real model")
+    if args.ablation and args.arms == "llm":
+        raise SystemExit("--ablation and --arms llm are different experiments; pick one")
+
     if args.ablation:
         arms = list(ABLATION_ARMS)
     elif args.arms == "llm":
@@ -324,21 +387,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         arms.append(Arm(label="haris +ours", defense_url=args.defense_url, attacker="adaptive"))
 
     model_factory = None
-    if args.model != "mock":
+    agent: dict[str, Any] = {"model": "mock"}
+    if real_model:
         if not args.model.startswith("ollama:"):
             raise SystemExit(f"unknown --model {args.model!r}; use mock or ollama:<name>")
         from redteam.ollama_agent import factory
 
-        model_factory = factory(args.model.removeprefix("ollama:"))
+        from redteam import ollama_agent
+
+        name = args.model.removeprefix("ollama:")
+        model_factory = factory(name, log_path=args.artifacts / "agent-events.jsonl")
+        agent = {
+            "model": name,
+            "runtime": "ollama",
+            "num_ctx": ollama_agent.NUM_CTX,
+            "max_new_tokens": ollama_agent.MAX_NEW_TOKENS,
+            "decoding": dict(ollama_agent.NEUTRAL_DECODING),
+            "seed": ollama_agent.SEED,
+            "thinking": False,
+            "adapter": "sentinel.models.ollama_adapter + explicit num_ctx, neutral penalties, seed",
+            "parser": "kit parse_action (reads {type: <tool>} as that tool call)",
+            "events_log": str(args.artifacts / "agent-events.jsonl"),
+        }
 
     matrix = Matrix(
         kit_root=args.kit,
         artifacts=args.artifacts,
-        split=args.split,
+        split=args.split if not (args.scenarios or args.scenario) else "custom",
         ood_path=args.ood,
         suite_path=args.scenarios,
         extra_paths=args.scenario,
         model_factory=model_factory,
+        agent=agent,
     )
     rows = matrix.run(arms)
 
