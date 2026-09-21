@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   tests:
     name: tests (python 3.12)
@@ -26,7 +30,9 @@ jobs:
         # no-hardcoding audit also needs the scenario corpus to search against, and it
         # skips silently without it -- so a CI run without this step would be green and
         # meaningless.
-        run: git clone --depth 1 https://github.com/Skan22/Sentinel_Starter_Kit.git "$RUNNER_TEMP/kit"
+        run: |
+          git clone https://github.com/Skan22/Sentinel_Starter_Kit.git "$RUNNER_TEMP/kit"
+          git -C "$RUNNER_TEMP/kit" checkout --quiet dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2
 
       - uses: astral-sh/setup-uv@v5
         with:

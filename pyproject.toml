@@ -16,7 +16,7 @@ dependencies = [
 # produced an image that escalated every action; `tests/test_readiness.py` now fails
 # loudly instead of the service degrading in silence.
 [project.optional-dependencies]
-contract = ["sentinel-bench @ git+https://github.com/Skan22/Sentinel_Starter_Kit.git@main"]
+contract = ["sentinel-bench @ git+https://github.com/Skan22/Sentinel_Starter_Kit.git@dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2"]
 
 dev = ["pytest>=8.3", "httpx>=0.27"]
 

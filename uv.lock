@@ -112,7 +112,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.8,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "sentinel-bench", marker = "extra == 'contract'", git = "https://github.com/Skan22/Sentinel_Starter_Kit.git?rev=main" },
+    { name = "sentinel-bench", marker = "extra == 'contract'", git = "https://github.com/Skan22/Sentinel_Starter_Kit.git?rev=dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
 provides-extras = ["contract", "dev"]
@@ -306,7 +306,7 @@ wheels = [
 [[package]]
 name = "sentinel-bench"
 version = "0.1.0"
-source = { git = "https://github.com/Skan22/Sentinel_Starter_Kit.git?rev=main#a0c03ea9400d88e18f53c2f59aa59d752b95def5" }
+source = { git = "https://github.com/Skan22/Sentinel_Starter_Kit.git?rev=dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2#dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
