@@ -15,11 +15,12 @@ from pydantic import ValidationError
 from sentinel.core.actions import Decision, DefenseDecision
 from sentinel.defenses.interface import DefenseRequest
 
-from haris.authority import assess_authority
+from haris.authority import assess_authority, assess_memory_authority
 from haris.config import SETTINGS
 from haris.dataflow import assess_dataflow
 from haris.fusion import fuse
 from haris.journal import Journal
+from haris.lifecycle import assess_confirmation, target_action
 from haris.planner import assess_plan
 from haris.policy import PolicyView
 from haris.rewrite import safer_alternative
@@ -64,13 +65,28 @@ def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str,
     view = TrustView(request)
     timings: dict[str, float] = {}
 
+    # Every stage judges the action that would actually take effect: a confirmation
+    # request is a wrapper around a real call, and judging the wrapper laundered it.
+    effective = target_action(request.candidate_action)
+
     mark = time.perf_counter()
-    signals: list[Signal] = assess_authority(view)
+    signals: list[Signal] = assess_authority(view, effective)
     timings["authority"] = round((time.perf_counter() - mark) * 1000, 3)
 
     mark = time.perf_counter()
-    signals += assess_plan(request, policy)
+    plan_signals = assess_plan(request, policy)
+    signals += plan_signals
     timings["plan"] = round((time.perf_counter() - mark) * 1000, 3)
+
+    mark = time.perf_counter()
+    lifecycle_signals = assess_confirmation(request, policy, view)
+    signals += lifecycle_signals
+    timings["lifecycle"] = round((time.perf_counter() - mark) * 1000, 3)
+
+    # Recalled memory only counts as authority when something else already says this
+    # action was not authorized. Otherwise the agent is simply using a fact it noted.
+    unauthorized = any(s.value > 0.0 for s in plan_signals + lifecycle_signals)
+    signals += assess_memory_authority(view, effective, unauthorized)
 
     mark = time.perf_counter()
     flow_signals, flow_meta = assess_dataflow(request, view, policy)
@@ -82,7 +98,9 @@ def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str,
     # Decision ladder. Prefer a safer equivalent over an outright block: the official
     # score is a geometric mean, so needless blocking is disproportionately expensive.
     tainted = extract_tainted_values(view)
-    alternative = safer_alternative(request.candidate_action, policy, tainted)
+    alternative = safer_alternative(
+        request.candidate_action, policy, tainted, reasons=result.active_codes
+    )
     if result.risk_score >= SETTINGS.block_threshold:
         decision, rewritten = (
             (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
@@ -102,7 +120,12 @@ def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str,
             "least_trusted_seen": request.history_digest.least_trusted_seen,
             "most_sensitive_seen": request.history_digest.most_sensitive_seen,
         },
-        "plan": {"policy_id": policy.policy_id, "tool": request.candidate_action.tool},
+        "plan": {
+            "policy_id": policy.policy_id,
+            "tool": effective.tool,
+            "action_type": request.candidate_action.type.value,
+            "confirmed": effective.digest() in set(request.history_digest.confirmations_granted),
+        },
         "dataflow": flow_meta,
         "stage_timings_ms": timings,
         "total_ms": round((time.perf_counter() - started) * 1000, 3),
