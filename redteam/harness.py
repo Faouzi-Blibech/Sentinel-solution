@@ -152,12 +152,18 @@ class Matrix:
     split: str = "public"
     ood_path: Path | None = None
     suite_path: Path | None = None  # run these scenarios instead of a published split
+    # Extra scenario files or directories, appended to whichever suite was chosen.
+    extra_paths: Sequence[Path] = ()
+    # The agent under attack. The kit's mock by default; a real model via --model.
+    model_factory: Callable[[], Any] | None = None
     rows: list[dict[str, Any]] = field(default_factory=list)
 
     def run(self, arms: Sequence[Arm]) -> list[dict[str, Any]]:
         competition = load_competition(None, self.kit_root)
         source = Path(self.suite_path) if self.suite_path else self.kit_root / "scenarios" / self.split
-        suite = load_suite(source)
+        suite = list(load_suite(source)) if (self.suite_path or not self.extra_paths) else []
+        for extra in self.extra_paths:
+            suite.extend(load_suite(Path(extra)))
         if not suite:
             raise ValueError(f"no scenarios under {source}")
         ood = load_suite(self.ood_path) if self.ood_path and Path(self.ood_path).exists() else []
@@ -174,6 +180,7 @@ class Matrix:
                 attack_mode=AttackMode.NONE if arm.attacker == "none" else AttackMode.ADAPTIVE,
                 artifacts=store,
                 artifact_group=store.unique_group(f"redteam-{self.split}-{arm.label}"),
+                **({"model_factory": self.model_factory} if self.model_factory else {}),
             )
             report = evaluate(
                 suite,
@@ -261,6 +268,14 @@ ABLATION_ARMS = (
     Arm(label="haris: full (in-process)", in_process=True, attacker="adaptive"),
 )
 
+# Against a real model every step is a GPU generation, so the matrix is cut to the two
+# arms that answer the question: does the attack land on a real agent at all (the
+# floor), and does HARIS stop it. Both arms face the same attacker.
+LLM_ARMS = (
+    Arm(label="allow_all +real model", defense="allow_all", attacker="adaptive"),
+    Arm(label="haris +real model", in_process=True, attacker="adaptive"),
+)
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
@@ -274,16 +289,47 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--artifacts", type=Path, default=Path("artifacts/redteam"))
     parser.add_argument("--out", type=Path, default=Path("docs/report/ablation.json"))
     parser.add_argument(
+        "--scenario",
+        action="append",
+        type=Path,
+        default=[],
+        help="a scenario file to run; repeat to select several (replaces the split)",
+    )
+    parser.add_argument(
+        "--model",
+        default="mock",
+        help="the agent under attack: mock (default) or ollama:<name>, e.g. ollama:qwen3.5:9b",
+    )
+    parser.add_argument(
+        "--arms",
+        choices=("baselines", "llm"),
+        default="baselines",
+        help="baselines: the full ladder; llm: floor + HARIS only, for real-model runs",
+    )
+    parser.add_argument(
         "--ablation",
         action="store_true",
         help="run HARIS with one stage removed at a time instead of the baseline ladder",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    arms = list(ABLATION_ARMS) if args.ablation else list(DEFAULT_ARMS)
+    if args.ablation:
+        arms = list(ABLATION_ARMS)
+    elif args.arms == "llm":
+        arms = list(LLM_ARMS)
+    else:
+        arms = list(DEFAULT_ARMS)
     if args.defense_url and not args.ablation:
         arms.append(Arm(label="haris +shipped", defense_url=args.defense_url, attacker="mutation"))
         arms.append(Arm(label="haris +ours", defense_url=args.defense_url, attacker="adaptive"))
+
+    model_factory = None
+    if args.model != "mock":
+        if not args.model.startswith("ollama:"):
+            raise SystemExit(f"unknown --model {args.model!r}; use mock or ollama:<name>")
+        from redteam.ollama_agent import factory
+
+        model_factory = factory(args.model.removeprefix("ollama:"))
 
     matrix = Matrix(
         kit_root=args.kit,
@@ -291,6 +337,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         split=args.split,
         ood_path=args.ood,
         suite_path=args.scenarios,
+        extra_paths=args.scenario,
+        model_factory=model_factory,
     )
     rows = matrix.run(arms)
 
