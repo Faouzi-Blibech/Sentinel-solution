@@ -64,7 +64,7 @@ jobs:
 
       - name: Run
         run: |
-          docker run -d --name haris-ci -p 8080:8080 haris:ci
+          docker run -d --name haris-ci -p 127.0.0.1:8080:8080 haris:ci
           for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; then break; fi
             sleep 1
@@ -82,7 +82,7 @@ jobs:
         run: |
           curl -sf -X POST http://127.0.0.1:8080/v1/decision \
             -H 'content-type: application/json' \
-            -d @.github/workflows/probe-request.json | tee decision.json
+            -d @scripts/probe-request.json | tee decision.json
           python - <<'PY'
           import json, sys
           body = json.load(open("decision.json"))

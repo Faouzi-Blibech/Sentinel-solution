@@ -101,6 +101,24 @@ Then, from the official starter kit directory:
 uv run sentinel eval public --defense-url http://127.0.0.1:8080
 ```
 
+### In Docker
+
+```bash
+scripts/run_container.sh                                        # build, run, verify
+HARIS_URL=http://127.0.0.1:8080 scripts/run_eval.sh <kit> public  # score the container
+```
+
+Use the script rather than a bare `docker run`. It publishes on `127.0.0.1` only (a bare
+`-p 8080:8080` exposes the defense to your whole network), and it verifies from the host
+that the container can make a real decision before returning.
+
+That second check exists because a container can report `healthy` while nothing can reach
+it: its HEALTHCHECK runs inside the container, and never crosses the host-to-container port
+forward. On Docker Desktop for Windows we lost that forward once, and the evaluation that
+followed produced 91 `DefenseUnavailable` errors and an official score of 0.080 without
+failing. `run_eval.sh` now refuses to start against a target that cannot decide, and
+rejects any run in which a decision failed to reach the defense.
+
 ## Red-team
 
 ```bash
