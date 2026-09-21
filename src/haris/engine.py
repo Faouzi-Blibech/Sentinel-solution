@@ -16,7 +16,7 @@ from sentinel.core.actions import Decision, DefenseDecision
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.authority import assess_authority, assess_memory_authority
-from haris.config import SETTINGS
+from haris.config import SETTINGS, Settings
 from haris.dataflow import assess_dataflow
 from haris.fusion import fuse
 from haris.journal import Journal
@@ -59,7 +59,9 @@ def _explain(decision: Decision, codes: list[str]) -> str:
     return f"Blocked: {joined}."
 
 
-def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str, Any]]:
+def decide_detailed(
+    request: DefenseRequest, settings: Settings = SETTINGS
+) -> tuple[DefenseDecision, dict[str, Any]]:
     started = time.perf_counter()
     policy = PolicyView(request.policy_context)
     view = TrustView(request)
@@ -70,26 +72,29 @@ def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str,
     effective = target_action(request.candidate_action)
 
     mark = time.perf_counter()
-    signals: list[Signal] = assess_authority(view, effective)
+    signals: list[Signal] = assess_authority(view, effective) if settings.authority_enabled else []
     timings["authority"] = round((time.perf_counter() - mark) * 1000, 3)
 
     mark = time.perf_counter()
-    plan_signals = assess_plan(request, policy)
+    plan_signals = assess_plan(request, policy) if settings.plan_enabled else []
     signals += plan_signals
     timings["plan"] = round((time.perf_counter() - mark) * 1000, 3)
 
     mark = time.perf_counter()
-    lifecycle_signals = assess_confirmation(request, policy, view)
+    lifecycle_signals = assess_confirmation(request, policy, view) if settings.lifecycle_enabled else []
     signals += lifecycle_signals
     timings["lifecycle"] = round((time.perf_counter() - mark) * 1000, 3)
 
     # Recalled memory only counts as authority when something else already says this
     # action was not authorized. Otherwise the agent is simply using a fact it noted.
     unauthorized = any(s.value > 0.0 for s in plan_signals + lifecycle_signals)
-    signals += assess_memory_authority(view, effective, unauthorized)
+    if settings.memory_enabled:
+        signals += assess_memory_authority(view, effective, unauthorized)
 
     mark = time.perf_counter()
-    flow_signals, flow_meta = assess_dataflow(request, view, policy)
+    flow_signals, flow_meta = (
+        assess_dataflow(request, view, policy) if settings.dataflow_enabled else ([], {})
+    )
     signals += flow_signals
     timings["dataflow"] = round((time.perf_counter() - mark) * 1000, 3)
 
@@ -98,14 +103,16 @@ def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str,
     # Decision ladder. Prefer a safer equivalent over an outright block: the official
     # score is a geometric mean, so needless blocking is disproportionately expensive.
     tainted = extract_tainted_values(view)
-    alternative = safer_alternative(
-        request.candidate_action, policy, tainted, reasons=result.active_codes
+    alternative = (
+        safer_alternative(request.candidate_action, policy, tainted, reasons=result.active_codes)
+        if settings.rewrite_enabled
+        else None
     )
-    if result.risk_score >= SETTINGS.block_threshold:
+    if result.risk_score >= settings.block_threshold:
         decision, rewritten = (
             (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
         )
-    elif result.risk_score >= SETTINGS.escalate_threshold:
+    elif result.risk_score >= settings.escalate_threshold:
         decision, rewritten = (
             (Decision.REWRITE, alternative) if alternative is not None else (Decision.ESCALATE, None)
         )
@@ -138,14 +145,14 @@ def decide_detailed(request: DefenseRequest) -> tuple[DefenseDecision, dict[str,
         reason_codes=result.active_codes,
         explanation=_explain(decision, result.active_codes)[:500],
         rewritten_action=rewritten,
-        metadata=_trim_metadata(metadata, SETTINGS.max_metadata_bytes),
+        metadata=_trim_metadata(metadata, settings.max_metadata_bytes),
     )
     return verdict, metadata
 
 
-def decide(request: DefenseRequest) -> DefenseDecision:
+def decide(request: DefenseRequest, settings: Settings = SETTINGS) -> DefenseDecision:
     """The contract entry point. Callers wanting the untrimmed metadata use decide_detailed."""
-    return decide_detailed(request)[0]
+    return decide_detailed(request, settings)[0]
 
 
 MAX_PRUNE_PASSES = 8
