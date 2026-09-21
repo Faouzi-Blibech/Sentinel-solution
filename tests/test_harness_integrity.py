@@ -156,3 +156,47 @@ def test_an_injectable_attack_with_nothing_accepted_is_still_untested() -> None:
         termination="completed", mutations=[],
     )
     assert harness.untested(silent, injectable={"attack_bad"})
+
+
+# --- A decision that never reached the defense is not a decision -----------------------
+#
+# The kit turns an unreachable defense into DefenseUnavailable, applies its fail mode, and
+# still produces a complete scorecard. run_eval.sh rejects such a run; the harness wrote
+# its report regardless, so a dead server on a fixed port became a plausible ablation row.
+
+
+def test_an_arm_with_defense_errors_is_reported_as_unreachable() -> None:
+    rows = [{"label": "ok", "defense_errors": 0}, {"label": "dead", "defense_errors": 3}]
+    assert harness.unreachable_arms(rows) == ["dead"]
+
+
+def test_the_harness_refuses_to_write_a_report_when_decisions_never_arrived(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class DeadServerMatrix:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def run(self, arms: object) -> list[dict[str, object]]:
+            return [{"label": "haris +ours", "defense_errors": 7}]
+
+    monkeypatch.setattr(harness, "Matrix", DeadServerMatrix)
+    monkeypatch.setattr(harness, "render_table", lambda rows: "")
+    monkeypatch.setattr(harness, "render_families", lambda rows: "")
+    out = tmp_path / "report.json"
+    with pytest.raises(SystemExit, match="never reached the defense"):
+        harness.main(["--kit", str(tmp_path), "--defense-url", "http://127.0.0.1:9", "--out", str(out)])
+    assert not out.exists()
+
+
+# --- An ablation changes one thing ------------------------------------------------------
+#
+# The stage ablation ran every arm against the adaptive attacker, whose ledger learns from
+# the defense's reactions across the suite. What an arm faced therefore depended on what
+# its earlier scenarios had taught the ledger, and "no data flow" moved from 0.798 to
+# 1.000 between two runs in which that stage did not change.
+
+
+def test_every_ablation_arm_faces_the_same_fixed_attacker() -> None:
+    attackers = {arm.attacker for arm in harness.ABLATION_ARMS}
+    assert attackers == {"mutation"}

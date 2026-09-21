@@ -333,6 +333,15 @@ def render_families(rows: Sequence[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def unreachable_arms(rows: Sequence[dict[str, Any]]) -> list[str]:
+    """Arms in which at least one decision never reached the defense.
+
+    The kit applies its fail mode to a DefenseUnavailable and scores the run anyway, so
+    such a row measures the network, not the defense.
+    """
+    return [row["label"] for row in rows if (row.get("defense_errors") or 0) > 0]
+
+
 def write_report(rows: Sequence[dict[str, Any]], path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(list(rows), indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -354,20 +363,28 @@ DEFAULT_ARMS = (
 # attributes an outcome to a component rather than to a different codebase. Comparing
 # HARIS with somebody else's baseline is a benchmark, not an ablation, and the rubric
 # asks for the latter.
+#
+# Every arm faces the kit's fixed mutation attacker. Ours adapts to the defense's
+# reactions across the suite, so under it what an arm faced depended on what its earlier
+# scenarios had taught it, and a row could move between runs with no change to its stage.
+# An ablation changes one thing; the adaptive attacker is measured in the baseline ladder.
 ABLATION_ARMS = (
-    Arm(label="haris: no authority", in_process=True, ablate=("authority",), attacker="adaptive"),
-    Arm(label="haris: no memory rule", in_process=True, ablate=("memory",), attacker="adaptive"),
-    Arm(label="haris: no plan commitment", in_process=True, ablate=("plan",), attacker="adaptive"),
-    Arm(label="haris: no lifecycle gate", in_process=True, ablate=("lifecycle",), attacker="adaptive"),
-    Arm(label="haris: no data flow", in_process=True, ablate=("dataflow",), attacker="adaptive"),
-    Arm(label="haris: no rewrite", in_process=True, ablate=("rewrite",), attacker="adaptive"),
+    Arm(label="haris: no authority", in_process=True, ablate=("authority",), attacker="mutation"),
+    Arm(label="haris: no memory rule", in_process=True, ablate=("memory",), attacker="mutation"),
+    Arm(label="haris: no plan commitment", in_process=True, ablate=("plan",), attacker="mutation"),
+    Arm(label="haris: no lifecycle gate", in_process=True, ablate=("lifecycle",), attacker="mutation"),
+    Arm(label="haris: no data flow", in_process=True, ablate=("dataflow",), attacker="mutation"),
+    Arm(label="haris: no rewrite", in_process=True, ablate=("rewrite",), attacker="mutation"),
+    # Provenance and the instruction-authority rule alone: the classic "untrusted text
+    # cannot give orders" defense, without anything HARIS adds on top of it. It was
+    # labelled "trust only", which it never was -- authority stays on.
     Arm(
-        label="haris: trust only",
+        label="haris: trust + authority only",
         in_process=True,
         ablate=("plan", "lifecycle", "dataflow", "rewrite", "memory"),
-        attacker="adaptive",
+        attacker="mutation",
     ),
-    Arm(label="haris: full (in-process)", in_process=True, attacker="adaptive"),
+    Arm(label="haris: full (in-process)", in_process=True, attacker="mutation"),
 )
 
 # Against a real model every step is a GPU generation, so the matrix is cut to the two
@@ -472,6 +489,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     print()
     print(render_families(rows))
     print()
+    dead = unreachable_arms(rows)
+    if dead:
+        raise SystemExit(
+            f"INVALID RUN: decisions never reached the defense in {', '.join(dead)} "
+            "(DefenseUnavailable). Those rows measure the network, not the defense; "
+            f"{args.out} was not written."
+        )
     print(f"written: {write_report(rows, args.out)}")
     return 0
 
