@@ -25,7 +25,7 @@ from haris.planner import assess_plan
 from haris.policy import PolicyView
 from haris.rewrite import safer_alternative
 from haris.secrets import extract_tainted_values
-from haris.signals import Signal
+from haris.signals import SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
 
 METADATA_VERSION = "1.0"
@@ -108,7 +108,17 @@ def decide_detailed(
         if settings.rewrite_enabled
         else None
     )
-    if result.risk_score >= settings.block_threshold:
+    # A detected leak is never delegated to a human. The kit's simulated human approves an
+    # escalation iff its envelope -- tool and match keys -- matches a legitimate step, and
+    # never reads content; so an escalated draft to the vendor carrying an encoded token
+    # looks like the real reply and is approved. Escalation is only safe when the danger
+    # is in the envelope. For a leak the answer is a provably clean rewrite, or a block.
+    leak = SENSITIVE_TO_EXTERNAL_SINK in result.active_codes
+    if leak:
+        decision, rewritten = (
+            (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
+        )
+    elif result.risk_score >= settings.block_threshold:
         decision, rewritten = (
             (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
         )

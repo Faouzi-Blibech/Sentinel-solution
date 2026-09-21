@@ -48,6 +48,26 @@ def _decode_hex(text: str) -> str:
     return "\n".join(out)
 
 
+def reveals_any(text: str, needles: set[str]) -> str:
+    """The first tainted value any decoding of `text` reveals, or "" if none does.
+
+    The detector and the rewrite both ask this question, and they must agree. They did
+    not: detection decoded base64/hex/rot13/reversed while the rewrite checked only the
+    plain text, so a rewrite could strip the plain token, forward its base64 copy, and
+    call the result clean. Needles are tried in sorted order so the answer never depends
+    on set iteration order, which varies with PYTHONHASHSEED.
+    """
+    if not needles or not text:
+        return ""
+    ordered = sorted(n for n in needles if n)
+    for _, decoded in variants(text):
+        haystack = normalize(decoded)
+        for needle in ordered:
+            if needle in haystack:
+                return needle
+    return ""
+
+
 def variants(text: str) -> list[tuple[str, str]]:
     """Return (encoding_name, decoded_text) pairs to scan for tainted values."""
     text = text[:MAX_SCAN_CHARS]
