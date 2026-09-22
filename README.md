@@ -144,6 +144,64 @@ followed produced 91 `DefenseUnavailable` errors and an official score of 0.080 
 failing. `run_eval.sh` now refuses to start against a target that cannot decide, and
 rejects any run in which a decision failed to reach the defense.
 
+## Use HARIS in your own agent
+
+`POST /v1/decision` speaks `DefenseRequest`, the organizers' own contract type. Most
+agents are not the SENTINEL kit, so HARIS also has a second front door that speaks
+OpenAI- and Anthropic-shaped tool calls directly: `HarisGuard`, in-process, and its HTTP
+twin `POST /v1/guard`. Both call the exact same decision core as `/v1/decision` --
+no separate, unaudited code path.
+
+```python
+from haris.guard import HarisGuard, Source
+
+guard = HarisGuard()  # one instance per conversation -- it remembers tainted values across calls
+verdict = guard.check(
+    goal="Reply to the vendor email.",
+    proposed={"id": "1", "type": "function",
+              "function": {"name": "email_send", "arguments": '{"to": "x@partner.example", "body": "..."}'}},
+    sources=[Source(text="...email body...", trust="untrusted_external", sensitivity="restricted")],
+)
+print(verdict.decision, verdict.risk, verdict.reason_codes)
+if verdict.decision == "rewrite":
+    send(verdict.rewritten)  # already re-rendered in YOUR OWN OpenAI/Anthropic shape
+```
+
+`proposed` accepts an OpenAI tool call, an OpenAI `choices[0].message` carrying
+`tool_calls`, an Anthropic `tool_use` block, a plain `{"name", "arguments"}` mapping, or
+a bare final-answer string -- whichever shape your loop already produces. An
+unrecognized shape escalates; it never silently passes as a harmless final answer.
+
+The same call over HTTP, from any language:
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/guard \
+  -H 'content-type: application/json' \
+  -d '{"goal": "Reply to the vendor email.",
+       "proposed": {"name": "email_send", "arguments": {"to": "x@partner.example", "body": "..."}}}'
+```
+
+`trust` on a `Source` or message (`system_policy` > `authenticated_user` >
+`trusted_internal` > `untrusted_internal` > `untrusted_external` > `adversary_controlled`)
+is what can authorize an action -- never the words the content carries. An email from
+outside your organization is `untrusted_external` no matter how politely it asks.
+
+Run the worked example end to end -- ten seconds, no GPU, no server to start:
+
+```bash
+uv run --python 3.12 python examples/guard_any_agent.py
+```
+
+It prints HARIS stopping an agent loop it has never seen from attempting to exfiltrate a
+credential a vendor email asked for; see [`examples/README.md`](examples/README.md).
+
+**The guard needs the contract package**: `pip install "haris[contract]"` (equivalently,
+`uv sync --python 3.12 --all-extras`, see *Quick start* above). It builds a
+`DefenseRequest` internally and calls `haris.engine.decide`, the same decision core
+`/v1/decision` calls -- it does not skip the contract types, it hides them from the
+caller. Decoupling the guard from the organizers' kit entirely, so it needs no
+SENTINEL-specific type at all, is future work, not a capability this submission has today.
+
 ## Red-team
 
 ```bash

@@ -153,6 +153,32 @@ so a difference between rows is attributable to the stage that was removed -- wh
 makes the table in §5 a statement about HARIS's components rather than a comparison of two
 different systems.
 
+### 4.1 Using HARIS outside the kit
+
+Every stage above decides from a `DefenseRequest` -- a plain, frozen pydantic object with
+a goal, a conversation, a candidate action, provenance, and a policy dict. Nothing in
+`haris/engine.py` or the six stages it calls reads a scenario id, a simulator hook, or
+anything else specific to the kit's evaluator. The type is contract-shaped, not
+kit-shaped: it happens to be the organizers' own contract type, but the decision core
+does not care who built the `DefenseRequest`, only that one exists.
+
+That observation is what `haris/guard.py`'s `HarisGuard` is: an adapter, not a second
+decision core. It normalizes an OpenAI- or Anthropic-shaped tool call (or a plain one, or
+a bare final answer) into the same `CandidateAction`, builds the rest of a
+`DefenseRequest` from a goal, a message history and a list of context sources, and calls
+`haris.engine.decide` -- the identical function `/v1/decision` calls. `POST /v1/guard` is
+its HTTP twin, for a caller not in Python. Two surfaces, one decision core: a defect fixed
+in one is fixed in both, because there is only one.
+
+`examples/guard_any_agent.py` is the demonstration: a small agent loop with its own
+shapes, no `DefenseRequest` constructed anywhere in it, showing HARIS reading a vendor
+email carrying a plausible injected instruction and rewriting the credential-carrying
+`email_send` it provokes into a redacted `email_draft` -- rewrite, not refusal. See
+`examples/README.md` and the *Use HARIS in your own agent* section of the top-level
+README. The guard still depends on the organizers' contract package for its types
+(`DefenseRequest`, `CandidateAction`); decoupling it so it needs no SENTINEL-specific type
+at all is future work, not a claim this report makes.
+
 ## 5. Results on the kit
 
 Scored by the kit's own scorer (`scripts/run_eval.sh`), every shipped baseline the same way:
