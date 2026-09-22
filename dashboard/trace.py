@@ -15,6 +15,8 @@ just without the signal decomposition.
 from __future__ import annotations
 
 import json
+import os
+import time
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,12 @@ _SUMMARY_FIELDS = (
 # re-reading every trace on every poll grows with each eval left on disk.
 _RUN_CACHE: dict[Path, tuple[tuple[int, ...], dict[str, Any]]] = {}
 _JOURNAL_CACHE: dict[Path, tuple[tuple[int, ...], dict[tuple[str, int], dict[str, Any]]]] = {}
+# Per folder: its mtime when listed, the run files in it with (mtime_ns, size), and its
+# subfolders. See _scan: an old, unchanged folder is not listed again.
+_FOLDER_CACHE: dict[str, tuple[int, dict[str, tuple[int, int]], list[str]]] = {}
+# A folder changed this recently may hold a scenario still appending to its trace. A
+# real-model scenario runs for a few minutes; fifteen is a wide margin.
+LIVE_WINDOW_S = 15 * 60
 
 
 def parse_trace(lines: Iterable[str]) -> list[dict[str, Any]]:
@@ -282,8 +290,11 @@ def load_run(trace_path: Path, journal_path: Path | Sequence[Path] | None = None
     return view
 
 
-def _run_entry(path: Path) -> dict[str, Any] | None:
-    identity = _identity(path, _summary_path(path))
+def _run_entry(
+    path: Path, identity: tuple[int, ...] | None = None, modified: float | None = None
+) -> dict[str, Any] | None:
+    if identity is None:
+        identity = _identity(path, _summary_path(path))
     cached = _RUN_CACHE.get(path)
     if cached is not None and cached[0] == identity:
         return cached[1]
@@ -305,10 +316,58 @@ def _run_entry(path: Path) -> dict[str, Any] | None:
         "outcome": _outcome(events),
         "counts": _counts(events),
         "summary": summary,
-        "modified": path.stat().st_mtime,
+        "modified": modified if modified is not None else path.stat().st_mtime,
     }
     _RUN_CACHE[path] = (identity, entry)
     return entry
+
+
+def _scan(base: Path) -> dict[str, tuple[int, int]]:
+    """Every file under `base` with its (mtime_ns, size), from ONE directory walk.
+
+    Behind Docker Desktop the artifacts are a Windows folder shared into the container,
+    where each metadata call is slow: listing 3,500 traces took 238 s when every path was
+    resolved (a lookup per path component) and then stat-ed again for the cache key. The
+    walk already returns what both needed, so this is the only filesystem pass a warm
+    listing makes.
+    """
+    found: dict[str, tuple[int, int]] = {}
+    pending = [str(base)]
+    live_since = time.time() - LIVE_WINDOW_S
+    while pending:
+        folder = pending.pop()
+        try:
+            folder_stat = os.stat(folder)
+        except OSError:
+            continue
+        # Adding or removing a file changes its folder's time, so an unchanged folder
+        # holds the same files. Appending to a file does NOT, and the kit appends to a
+        # trace while its scenario runs: a folder changed within the live window is
+        # always listed in full, so a run in progress keeps updating.
+        cached = _FOLDER_CACHE.get(folder)
+        if cached is not None and cached[0] == folder_stat.st_mtime_ns and folder_stat.st_mtime < live_since:
+            found.update(cached[1])
+            pending.extend(cached[2])
+            continue
+        files: dict[str, tuple[int, int]] = {}
+        subfolders: list[str] = []
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    subfolders.append(entry.path)
+                elif entry.name.endswith((".jsonl", ".summary.json")):
+                    stat = entry.stat(follow_symlinks=False)
+                    files[os.path.abspath(entry.path)] = (stat.st_mtime_ns, stat.st_size)
+            except OSError:
+                continue
+        _FOLDER_CACHE[folder] = (folder_stat.st_mtime_ns, files, subfolders)
+        found.update(files)
+        pending.extend(subfolders)
+    return found
 
 
 def discover_runs(root: Path | Sequence[Path], latest_only: bool = True) -> list[dict[str, Any]]:
@@ -319,22 +378,21 @@ def discover_runs(root: Path | Sequence[Path], latest_only: bool = True) -> list
     defense is returned: that is the one produced by the current build, and keeping
     one per defense is what lets a baseline sit beside HARIS on the same scenario.
     """
-    files: dict[Path, float] = {}
+    stats: dict[str, tuple[int, int]] = {}
     for base in _as_paths(root):
-        if not base.is_dir():
-            continue
-        for path in base.rglob("*.jsonl"):
-            if path.name == "journal.jsonl":
-                continue
-            try:
-                files[path.resolve()] = path.stat().st_mtime
-            except OSError:
-                continue
+        stats.update(_scan(base))
+    missing = (-1, -1)
+    files: dict[Path, int] = {
+        Path(name): stat[0]
+        for name, stat in stats.items()
+        if name.endswith(".jsonl") and os.path.basename(name) != "journal.jsonl"
+    }
 
     runs: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for path in sorted(files, key=files.__getitem__, reverse=True):
-        entry = _run_entry(path)
+        identity = stats[str(path)] + stats.get(str(_summary_path(path)), missing)
+        entry = _run_entry(path, identity=identity, modified=files[path] / 1e9)
         if entry is None:
             continue
         if latest_only:

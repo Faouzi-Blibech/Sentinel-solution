@@ -144,6 +144,32 @@ followed produced 91 `DefenseUnavailable` errors and an official score of 0.080 
 failing. `run_eval.sh` now refuses to start against a target that cannot decide, and
 rejects any run in which a decision failed to reach the defense.
 
+### HARIS and the trace viewer together
+
+```bash
+docker compose up -d --build                                       # HARIS :8080, viewer :8090
+HARIS_URL=http://127.0.0.1:8080 scripts/run_eval.sh <kit> public   # score it
+docker compose down                                                # stop both
+```
+
+Open the viewer at <http://127.0.0.1:8090>. The two containers share the HARIS reasoning
+journal through `<kit>/artifacts/haris/`, so runs scored against the container show *why*
+each decision was made, not only what it was. `KIT_DIR` points at the kit and defaults to a
+sibling folder named `Sentinel_Starter_Kit`; both ports are published on `127.0.0.1` only.
+The viewer image holds only the viewer, not the kit or the decision code.
+
+Through Docker Desktop's file sharing, the viewer's first listing of a large artifacts
+folder takes about two minutes, since every trace is read once. The container starts it in
+the background and the page says "Loading runs…" until it is done; after that a listing
+takes under a second.
+
+Only one HARIS can hold port 8080: stop a container from `run_container.sh` first
+(`docker rm -f haris`).
+
+**On Windows, run the `scripts/*.sh` commands from Git Bash.** In PowerShell, `bash` is
+the WSL launcher, not Git Bash. Use
+`& "C:\Program Files\Git\bin\bash.exe" scripts/run_eval.sh ...` on one line.
+
 ## Red-team
 
 ```bash

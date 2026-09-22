@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 
 from dashboard.trace import build_view, discover_runs, load_run, parse_journal, parse_trace
 
@@ -284,3 +286,83 @@ def test_view_gives_every_step_the_same_keys_with_or_without_a_journal():
     step = view["steps"][0]
     assert step["trust"] == {} and step["timings"] == {} and step["plan"] == {}
     assert step["total_ms"] is None and step["observation"] is None
+
+
+# --- Listing runs must stay cheap on a slow filesystem ---------------------------------
+#
+# Served from Docker Desktop, the kit's artifacts sit on a Windows folder shared into the
+# container, where every metadata call is slow. Listing 3,500 traces took 238 s: each file
+# was resolved (a lookup per path component, about 60 s) and stat-ed again for the cache
+# key, while the page re-polls every five seconds. One directory walk already knows every
+# file's size and time, so a warm listing needs no per-file call at all.
+
+
+def _one_run(tmp_path):
+    run_dir = tmp_path / "eval-public-http_defense-1"
+    run_dir.mkdir()
+    (run_dir / f"{RUN}.jsonl").write_text("\n".join(json.dumps(e) for e in TRACE), encoding="utf-8")
+
+
+def test_listing_runs_never_resolves_paths(tmp_path, monkeypatch):
+    _one_run(tmp_path)
+
+    def refuse(self, *args, **kwargs):
+        raise AssertionError("Path.resolve() costs a lookup per path component")
+
+    monkeypatch.setattr(Path, "resolve", refuse)
+    assert len(discover_runs(tmp_path)) == 1
+
+
+def test_a_warm_listing_makes_no_per_file_stat_call(tmp_path, monkeypatch):
+    _one_run(tmp_path)
+    discover_runs(tmp_path)  # cold: reads and caches the run
+    calls = []
+    real_stat = Path.stat
+
+    def counting(self, *args, **kwargs):
+        calls.append(self)
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", counting)
+    assert len(discover_runs(tmp_path)) == 1
+    assert calls == []
+
+
+def _age(folder, seconds=3600):
+    old = folder.stat().st_mtime - seconds
+    os.utime(folder, (old, old))
+
+
+def test_an_unchanged_old_folder_is_not_listed_again(tmp_path, monkeypatch):
+    """Adding or removing a file changes its folder's time; so a folder whose time has not
+    moved holds the same files, and 195 folder checks replace 7,129 file checks."""
+    _one_run(tmp_path)
+    _age(tmp_path / "eval-public-http_defense-1")
+    discover_runs(tmp_path)
+    listed = []
+    real_scandir = os.scandir
+    monkeypatch.setattr(os, "scandir", lambda path: listed.append(str(path)) or real_scandir(path))
+    assert len(discover_runs(tmp_path)) == 1
+    assert not any(p.endswith("eval-public-http_defense-1") for p in listed)
+
+
+def test_a_new_run_in_an_old_folder_still_appears(tmp_path):
+    _one_run(tmp_path)
+    folder = tmp_path / "eval-public-http_defense-1"
+    _age(folder)
+    assert len(discover_runs(tmp_path)) == 1
+    other = [dict(e, run_id="soc_other-http_defense-s0") for e in TRACE]
+    (folder / "soc_other-http_defense-s0.jsonl").write_text("\n".join(json.dumps(e) for e in other), encoding="utf-8")
+    assert len(discover_runs(tmp_path)) == 2
+
+
+def test_a_run_still_being_written_is_reread(tmp_path):
+    """Appending to a trace does not touch its folder's time. A folder changed in the last
+    few minutes may hold a live run, so it is always listed in full."""
+    _one_run(tmp_path)
+    path = tmp_path / "eval-public-http_defense-1" / f"{RUN}.jsonl"
+    before = discover_runs(tmp_path)[0]["steps"]
+    extra = dict(TRACE[-1], step_id=99, seq=10_000)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\n" + json.dumps(extra))
+    assert discover_runs(tmp_path)[0]["steps"] == before + 1
