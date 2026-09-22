@@ -18,6 +18,17 @@ def test_dockerfile_has_no_privileged_references():
     assert "--privileged" not in text
 
 
+def test_gitignore_covers_the_kit_clone():
+    """`git add -A` must never vendor the organizers' kit into our history.
+
+    Sentinel_Starter_Kit/ is a read-only clone that sits inside the checkout so the
+    disqualification audit and the eval scripts can find it (docs/KIT_PATH.md); it is not
+    ours to commit.
+    """
+    text = (ROOT / ".gitignore").read_text()
+    assert "Sentinel_Starter_Kit/" in text
+
+
 def test_manifest_matches_the_required_schema():
     manifest = yaml.safe_load((ROOT / "sentinel-submission.yaml").read_text())
     assert manifest["kind"] == "defense"

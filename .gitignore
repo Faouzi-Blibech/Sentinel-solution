@@ -225,3 +225,8 @@ artifacts/
 # Local audit scratch
 .playwright-cli/
 SENTINEL_Specification_Book_IndabaX_Tunisia.pdf
+
+# The organizers' kit, cloned locally so tests/test_no_hardcoding.py and the eval scripts
+# can find it (see docs/KIT_PATH.md). It is a read-only reference clone of someone else's
+# repository, not ours to commit -- `git add -A` would otherwise vendor the whole thing in.
+Sentinel_Starter_Kit/
