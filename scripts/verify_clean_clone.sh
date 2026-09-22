@@ -42,13 +42,23 @@ CLONE="$(mktemp -d)"
 cleanup() {
   local status=$?
   haris_stop_local
-  rm -rf "$CLONE"
+  # `kill` on a native Windows process (what MSYS kill actually sends) can return before
+  # the OS has finished tearing the process down, so an `rm -rf` that races right behind it
+  # can hit a file still mapped by uvicorn and fail. `set -e` applies inside a trap too, so
+  # that failure -- or any other in this function -- would abort before the PASS/FAIL line
+  # below ever printed: a real success reported as neither pass nor fail. Wait the process
+  # out, and let a still-stubborn rm be non-fatal rather than eat the one line a judge or CI
+  # actually reads off this script.
+  if [ -n "$HARIS_SERVER_PID" ]; then
+    wait "$HARIS_SERVER_PID" 2>/dev/null || true
+  fi
   echo ""
   if [ "$status" -eq 0 ]; then
     echo "PASS: a clean clone of $SOURCE_REPO builds, tests, serves, and decides."
   else
     echo "FAIL: a clean clone of $SOURCE_REPO does not work end to end (see above)." >&2
   fi
+  rm -rf "$CLONE" || true
   exit "$status"
 }
 trap cleanup EXIT
@@ -87,9 +97,27 @@ if [ -n "$KIT" ]; then
     exit 1
   fi
   echo "==> uv run sentinel run --scenario $scenario --defense-url $HARIS_URL"
-  if ! ( cd "$KIT" && $UV run sentinel run --scenario "$scenario" --defense-url "$HARIS_URL" --json >/dev/null ); then
+  # `sentinel run` never raises on an unreachable defense: HttpDefense.decide_or_fallback
+  # swallows DefenseUnavailable into a fail-mode decision and the CLI exits 0 regardless,
+  # exactly like scripts/_preflight.sh's own incident (91 DefenseUnavailable, official
+  # 0.080, exit 0). An exit-code check alone -- what this used to be, output sent to
+  # /dev/null -- would pass on that. Capture the JSON and check DecisionRecord.defense_error
+  # ourselves, the haris_check_scorecard invariant adapted to a single run.
+  run_json="$(cd "$KIT" && $UV run sentinel run --scenario "$scenario" --defense-url "$HARIS_URL" --json)" || {
     echo "FAIL: the kit could not run a real scenario against the clean clone's service." >&2
     exit 1
+  }
+  if ! printf '%s' "$run_json" | "$_PY" -c '
+import json, sys
+outcome = json.load(sys.stdin)["outcome"]
+decisions = outcome.get("decisions") or []
+errored = [d.get("step_id") for d in decisions if d.get("defense_error")]
+sys.exit(0 if decisions and not errored else 1)
+'; then
+    echo "FAIL: the kit ran a scenario, but at least one decision never reached the clean" >&2
+    echo "  clone's service (DecisionRecord.defense_error set), or none were recorded at" >&2
+    echo "  all. Those numbers would measure the network, not HARIS -- do not report them." >&2
+    exit 1
   fi
-  echo "  the kit ran $(basename "$scenario") against it end to end."
+  echo "  the kit ran $(basename "$scenario") against it end to end; every decision reached it."
 fi

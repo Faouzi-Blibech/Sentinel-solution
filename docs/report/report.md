@@ -231,12 +231,19 @@ model can attempt) and 4 benign; our adaptive attacker; HARIS in-process at comm
 - **The encoding detector still has not fired on a real attack.** Asked to base64-encode
   the token, the model leaked it in plain text, which the plain detector caught.
 
-**The kit's official Ollama adapter truncates the system prompt on small GPUs.** It sends
-no context size (`options` holds only `temperature` and `num_predict`), so Ollama uses its
-VRAM-based default -- 4,096 tokens on 8 GB -- against a worst-case prompt we measured at
-6,117 tokens, and drops the *front* of the prompt: the system prompt and the tool list. It
-also reads `OLLAMA_HOST` as a URL, while Ollama's own format has no scheme. Our adapter
-subclasses the official one and fixes only those; we recommend reporting both upstream.
+**The kit's official Ollama adapter sends no context size, against a measured 6,117-token
+worst case.** `options` holds only `temperature` and `num_predict` -- read directly off the
+adapter, not inferred. Ollama's own current docs put its VRAM-scaled default at 4k context
+for any GPU under 24 GiB (docs.ollama.com/context-length), which covers both our 8 GB
+evaluation card and the ~5-6 GB the kit's own docstring recommends as a minimum, so either
+one lands in that tier. We did not capture a request/response pair showing truncation happen
+against this adapter -- what follows is inference: several independent reports describe
+Ollama dropping tokens from the *front* of an over-long prompt rather than rejecting it, and
+if that holds here, this adapter's message layout (system prompt, then a single user turn
+holding the tool list) would lose the system prompt and tool schemas first. It also reads
+`OLLAMA_HOST` as a URL, while Ollama's own format has no scheme. Our adapter subclasses the
+official one and fixes only those; write-up and suggested patch:
+[`docs/report/upstream-ollama-issue.md`](upstream-ollama-issue.md).
 
 ## 7. Security defects we found and fixed
 

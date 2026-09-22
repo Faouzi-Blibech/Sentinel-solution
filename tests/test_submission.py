@@ -1,4 +1,3 @@
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -40,29 +39,33 @@ def test_verify_clean_clone_script_is_executable_and_well_formed():
     silently -- losing its execute bit, or a shell syntax error -- without paying for a
     full run on every test invocation.
     """
-    script = ROOT / "scripts" / "verify_clean_clone.sh"
+    rel = "scripts/verify_clean_clone.sh"
     # Python's os.stat() reports a fixed 0o666 for every file on native Windows regardless
     # of the real bit, so it cannot answer "executable" on this platform. git's tracked
     # mode is what a judge's `git clone` actually checks out on any platform -- and the one
     # thing `chmod` on a Windows checkout does not reliably change without
     # `git update-index --chmod=+x` -- so ask that instead of the filesystem.
     tracked = subprocess.run(
-        ["git", "ls-files", "-s", "scripts/verify_clean_clone.sh"],
+        ["git", "ls-files", "-s", rel],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    assert tracked, "scripts/verify_clean_clone.sh is not tracked by git"
+    assert tracked, f"{rel} is not tracked by git"
     mode = tracked.split()[0]
     assert mode == "100755", f"git will not check this out executable: mode {mode}"
-    # subprocess.run(["bash", ...]) on this machine silently launched WSL's bash.exe
-    # (Windows' "App Paths" registry key wins over PATH order for a bare name), which
-    # then reads a Windows path as escape sequences and reports "No such file". Resolve
-    # through PATH ourselves, the way shutil.which does it, to get Git's bash instead.
-    bash = shutil.which("bash")
-    assert bash, "no bash on PATH to syntax-check the script with"
-    subprocess.run([bash, "-n", str(script)], check=True)
+    # A bare "bash" here can resolve to WSL's launcher instead of Git's: CreateProcess (what
+    # subprocess.run uses) searches the Windows system directory before PATH for an
+    # unqualified name, and System32 carries WSL's bash.exe -- unrelated to and unfixed by
+    # shutil.which(), which does its own PATH-only search and lands on the same answer
+    # outside an interactive Git Bash session, where Git's usr/bin is never on the system
+    # PATH to begin with. Rather than guess which bash a caller's environment hands back,
+    # use a form both interoperate on: cwd=ROOT plus a repo-relative POSIX path. WSL's
+    # launcher translates the calling process's own working directory into the matching
+    # /mnt/... path before running the command; MSYS resolves the same relative path
+    # natively. Verified against both bashes on this machine.
+    subprocess.run(["bash", "-n", rel], cwd=ROOT, check=True)
 
 
 def test_manifest_matches_the_required_schema():
