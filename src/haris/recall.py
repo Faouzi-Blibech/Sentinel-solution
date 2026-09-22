@@ -110,6 +110,23 @@ class TaintMemory:
 
 MEMORY = TaintMemory()
 
+# Namespaced so this cannot collide with a key some other stage might one day memo onto
+# the same TrustView for an unrelated purpose.
+_CACHE_KEY = "haris.recall.extract_tainted_values"
+
+
+def cached_extract(view: TrustView, minimum: Sensitivity) -> set[str]:
+    """`secrets.extract_tainted_values`, memoized per (view, minimum) via `TrustView.memo`.
+
+    `assess_dataflow`'s own visible-vs-recalled comparison, this function's CONFIDENTIAL
+    and RESTRICTED derivation, and the engine's rewrite-path call all ask the identical
+    question of the identical view within one decision. Before this cache each of those
+    call sites paid for its own regex pass over the conversation -- 7 scans per decision
+    on a full 12-item window, measured -- for an answer that cannot change mid-decision:
+    `DefenseRequest` is frozen and `view` is constructed once per `decide_detailed` call.
+    """
+    return view.memo((_CACHE_KEY, minimum), lambda: extract_tainted_values(view, minimum))
+
 
 def tainted_values(
     request: DefenseRequest,
@@ -123,7 +140,7 @@ def tainted_values(
     instead of `secrets.extract_tainted_values` directly, so the memory step lives in
     exactly one place.
     """
-    fresh = extract_tainted_values(view, minimum)
+    fresh = cached_extract(view, minimum)
     if not settings.taint_enabled or not request.run_id:
         # No identity to key memory on (or the ablation arm asking for the pre-fix
         # behaviour): inventing a key for an empty run_id would merge unrelated runs.
@@ -133,15 +150,11 @@ def tainted_values(
         # not at whatever threshold this particular call happened to ask for. A value
         # that is actually restricted must out-rank a stale confidential memory of the
         # same token, and a confidential-only value must never be promoted to
-        # restricted just because some caller's minimum was confidential. Reusing
-        # `fresh` when it already IS one of the two fixed levels avoids scanning the
-        # conversation twice for the common case.
-        confidential = fresh if minimum is Sensitivity.CONFIDENTIAL else extract_tainted_values(
-            view, Sensitivity.CONFIDENTIAL
-        )
-        restricted = fresh if minimum is Sensitivity.RESTRICTED else extract_tainted_values(
-            view, Sensitivity.RESTRICTED
-        )
+        # restricted just because some caller's minimum was confidential. Both calls
+        # are cache hits whenever `minimum` is already CONFIDENTIAL or RESTRICTED (the
+        # only values any call site passes today), so this costs nothing extra.
+        confidential = cached_extract(view, Sensitivity.CONFIDENTIAL)
+        restricted = cached_extract(view, Sensitivity.RESTRICTED)
         MEMORY.remember(request.run_id, {token: Sensitivity.CONFIDENTIAL.rank for token in confidential})
         MEMORY.remember(request.run_id, {token: Sensitivity.RESTRICTED.rank for token in restricted})
         return fresh | MEMORY.recall(request.run_id, minimum.rank)

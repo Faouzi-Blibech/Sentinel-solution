@@ -18,8 +18,7 @@ from haris.config import SETTINGS, Settings
 from haris.encodings import normalize, variants
 from haris.lifecycle import target_action
 from haris.policy import PolicyView
-from haris.recall import tainted_values
-from haris.secrets import extract_tainted_values
+from haris.recall import cached_extract, tainted_values
 from haris.signals import ENCODED_PAYLOAD_DETECTED, SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
 
@@ -83,8 +82,9 @@ def assess_dataflow(
     # What THIS request's own spans show, with no memory involved -- kept separately so
     # the metadata below can report how much of `tainted` came from recall rather than
     # from something visible right now (report.md 8.1: the whole point of the fix is
-    # that these two can now differ).
-    visible = extract_tainted_values(view)
+    # that these two can now differ). `tainted_values`' own CONFIDENTIAL derivation
+    # below is a cache hit against this, not a second scan.
+    visible = cached_extract(view, Sensitivity.CONFIDENTIAL)
     tainted = tainted_values(request, view, Sensitivity.CONFIDENTIAL, settings)
     # The top sensitivity is copy-restricted, not merely export-restricted. In the kit
     # this is modelled per canary and the SOC service token's allowed_destinations is
