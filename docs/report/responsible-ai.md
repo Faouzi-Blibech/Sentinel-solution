@@ -27,19 +27,20 @@ single rule is what the stages implement:
 Measured against the attack families the specification book names, on the 40 published
 scenarios: data exfiltration 21/21 held, direct instruction 3/3, indirect injection 4/4,
 memory poisoning 2/2, multi-step 1/1, and 9/9 benign scenarios completed. On a real model
-(Qwen 3.5 9B) it held 6 of 8 attacks; the two it missed are the first failure mode below.
+(Qwen 3.5 9B) it held all 12 attacks, after we fixed the one flaw that run exposed (below).
 
 ## Known failure modes
 
 These are the things we know are wrong with it. None of them is hypothetical; each was
 found by probing the defense or by an independent audit of it.
 
-**Secrets are forgotten when they leave the conversation window. Not yet fixed.** The
-kit shows the defense only the last 12 conversation items, and HARIS keeps nothing between
+**Secrets were forgotten when they left the conversation window. Fixed.** The
+kit shows the defense only the last 12 conversation items, and HARIS kept nothing between
 requests. On Qwen 3.5 9B the agent retried the same leaking case note until the document
 holding the secret had scrolled out; HARIS rewrote it twelve times and allowed the
-thirteenth. Two restricted keys leaked this way. The fix is to remember tainted values per
-run; see `report.md` §5.1.
+thirteenth. Two restricted keys leaked this way. HARIS now remembers tainted values for the
+whole run; on the same model and scenarios it rewrote all 23 attempts in each. See
+`report.md` §8.1.
 
 **Unattributed tool output is not grounding.** The kit returns some tool results, such as
 the agent's own `payment_prepare`, with no provenance. HARIS treats them as untrusted, so a
@@ -70,9 +71,10 @@ changes nothing on either corpus, because the remaining stages catch the same at
 Data flow (public 0.999 to 0.150) and capability commitment (to 0.903) carry the load.
 The aggregate is the `trust + authority only` row: 0.999 falls to 0.091.
 
-**Our real-model evidence is thin.** One run of Qwen 3.5 9B, a quantized substitute for
-the reference Qwen3-8B, on 16 scenarios, five of them lost to an Ollama failure. It found
-the window flaw above, which no mock run could have.
+**Our real-model evidence is thin.** Two runs of Qwen 3.5 9B, a quantized substitute for
+the reference Qwen3-8B, on 16 scenarios whose attack texts we or the organizers wrote. The
+first found the window flaw above, which no mock run could have; the second, on the fixed
+code, held 12 of 12.
 
 **Our attacker is not what breaks the shipped baseline -- our scenarios are.** Until we
 fixed it, our adaptive attacker was *weaker* than the kit's: its cross-scenario memory
