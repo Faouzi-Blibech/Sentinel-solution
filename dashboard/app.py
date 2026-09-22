@@ -66,15 +66,9 @@ def create_app(artifacts: Path | Sequence[Path] | None = None, journal: Path | S
         return FileResponse(STATIC / "index.html")
 
     @app.get("/guard")
-    def guard_console() -> FileResponse:
-        """The connect-your-agent console.
-
-        The trace viewer can only show runs the simulator produced, and the guard is called
-        by agents the simulator never runs -- so guard decisions have no artifact to appear
-        in. This page is where that half of HARIS is visible: it calls the guard in-process,
-        which means no second server, no CORS, and no change to the scored service.
-        """
-        return FileResponse(STATIC / "guard.html")
+    def guard_alias() -> FileResponse:
+        """Kept so an old link still lands somewhere useful: the console is a tab on /."""
+        return FileResponse(STATIC / "index.html")
 
     @app.post("/api/guard")
     def guard_check(payload: dict) -> JSONResponse:
