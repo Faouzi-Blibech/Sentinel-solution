@@ -24,6 +24,7 @@ class Settings:
     lifecycle_enabled: bool = True
     dataflow_enabled: bool = True
     rewrite_enabled: bool = True
+    taint_enabled: bool = True
 
     def without(self, *stages: str) -> Settings:
         """The same configuration with named stages switched off."""

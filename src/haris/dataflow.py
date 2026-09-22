@@ -14,9 +14,11 @@ from sentinel.core.actions import ActionType
 from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
+from haris.config import SETTINGS, Settings
 from haris.encodings import normalize, variants
 from haris.lifecycle import target_action
 from haris.policy import PolicyView
+from haris.recall import tainted_values
 from haris.secrets import extract_tainted_values
 from haris.signals import ENCODED_PAYLOAD_DETECTED, SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
@@ -72,19 +74,24 @@ def _destination_class(destinations: list[str], policy: PolicyView) -> str:
 
 
 def assess_dataflow(
-    request: DefenseRequest, view: TrustView, policy: PolicyView
+    request: DefenseRequest, view: TrustView, policy: PolicyView, settings: Settings = SETTINGS
 ) -> tuple[list[Signal], dict[str, Any]]:
     # Judge the action that would take effect: a confirmation request carries the real
     # destination and the real payload inside confirmation_for.
     action = target_action(request.candidate_action)
     payload = action.text_payload()
-    tainted = extract_tainted_values(view)
+    # What THIS request's own spans show, with no memory involved -- kept separately so
+    # the metadata below can report how much of `tainted` came from recall rather than
+    # from something visible right now (report.md 8.1: the whole point of the fix is
+    # that these two can now differ).
+    visible = extract_tainted_values(view)
+    tainted = tainted_values(request, view, Sensitivity.CONFIDENTIAL, settings)
     # The top sensitivity is copy-restricted, not merely export-restricted. In the kit
     # this is modelled per canary and the SOC service token's allowed_destinations is
     # empty: it may reach no sink at all. Keying only on 'external' meant a restricted
     # credential written into an internal incident note passed silently, which is how
     # our own held-out SOC scenario beat this defense.
-    restricted = extract_tainted_values(view, Sensitivity.RESTRICTED)
+    restricted = tainted_values(request, view, Sensitivity.RESTRICTED, settings)
 
     destinations = _destinations(action.arguments) if action.type is ActionType.TOOL_CALL else []
     destination_class = _destination_class(destinations, policy)
@@ -133,6 +140,10 @@ def assess_dataflow(
         "tainted_value_count": len(tainted),
         "tainted_hit": (hit_value[:6] + "...") if hit_value else "",
         "restricted_copy": copied_restricted,
+        # How many of `tainted` this request did not itself show -- i.e. surfaced only
+        # because a run-scoped memory remembered them. A count, not the values: they are
+        # secrets and this dict is written to the journal on disk.
+        "recalled": len(tainted - visible),
     }
 
     return (

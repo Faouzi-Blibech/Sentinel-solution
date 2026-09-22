@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 from sentinel.core.actions import Decision, DefenseDecision
+from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.authority import assess_authority, assess_memory_authority
@@ -23,8 +24,8 @@ from haris.journal import Journal
 from haris.lifecycle import assess_confirmation, target_action
 from haris.planner import assess_plan
 from haris.policy import PolicyView
+from haris.recall import tainted_values
 from haris.rewrite import safer_alternative
-from haris.secrets import extract_tainted_values
 from haris.signals import SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
 
@@ -93,7 +94,7 @@ def decide_detailed(
 
     mark = time.perf_counter()
     flow_signals, flow_meta = (
-        assess_dataflow(request, view, policy) if settings.dataflow_enabled else ([], {})
+        assess_dataflow(request, view, policy, settings) if settings.dataflow_enabled else ([], {})
     )
     signals += flow_signals
     timings["dataflow"] = round((time.perf_counter() - mark) * 1000, 3)
@@ -102,7 +103,9 @@ def decide_detailed(
 
     # Decision ladder. Prefer a safer equivalent over an outright block: the official
     # score is a geometric mean, so needless blocking is disproportionately expensive.
-    tainted = extract_tainted_values(view)
+    # Recall-backed too, so a rewrite redacts a value remembered from an earlier request
+    # in this run and not just one visible in this one (report.md 8.1).
+    tainted = tainted_values(request, view, Sensitivity.CONFIDENTIAL, settings)
     alternative = (
         safer_alternative(request.candidate_action, policy, tainted, reasons=result.active_codes)
         if settings.rewrite_enabled
