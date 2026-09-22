@@ -123,6 +123,10 @@ pattern matching fails.
 ## Commands
 
 ```bash
+# build the environment -- --all-extras is required: the contract package and pytest are
+# both extras, and without it `uv sync` installs neither
+uv sync --python 3.12 --all-extras
+
 # tests
 uv run --python 3.12 pytest -v
 

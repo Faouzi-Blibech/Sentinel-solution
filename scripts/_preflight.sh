@@ -8,12 +8,43 @@
 # Readiness is checked from where the simulator stands, and on a real decision rather than
 # an open socket.
 
-_PY="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
+# Resolving a name is not evidence of an interpreter. Windows 11 ships "App execution
+# aliases" for python.exe/python3.exe that satisfy `command -v` and then print "Python was
+# not found" and exit 9009 -- so `command -v python3 || command -v python` selected a stub
+# and every reproduction command in the README died on its first line.
+#
+# `command -v` also stops at the first match, and the aliases sit in a directory that
+# usually precedes the real install, so asking it again cannot help. Walk PATH ourselves
+# and believe only a candidate that has executed something.
+haris_find_python() {
+  local name dir candidate
+  local saved_ifs="$IFS"
+  for name in python3 python py; do
+    IFS=":"
+    for dir in $PATH; do
+      IFS="$saved_ifs"
+      [ -n "$dir" ] || dir="."
+      for candidate in "$dir/$name" "$dir/$name.exe"; do
+        if [ -f "$candidate" ] && "$candidate" -c "" >/dev/null 2>&1; then
+          printf '%s' "$candidate"
+          return 0
+        fi
+      done
+      IFS=":"
+    done
+    IFS="$saved_ifs"
+  done
+  return 1
+}
+
+_PY="$(haris_find_python || true)"
 _PROBE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/probe-request.json"
 
 _need_python() {
   if [ -z "$_PY" ]; then
-    echo "preflight: no python3 or python on PATH; it is needed to read JSON responses." >&2
+    echo "preflight: no working python on PATH; it is needed to read JSON responses." >&2
+    echo "  (a python3/python that resolves but refuses to run is the Windows Store alias:" >&2
+    echo "   Settings > Apps > Advanced app settings > App execution aliases)" >&2
     return 1
   fi
 }

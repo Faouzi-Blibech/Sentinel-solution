@@ -97,10 +97,15 @@ the official score multiplies by an `efficiency_factor` derived from it.
 Python **3.12** is required (`>=3.12,<3.13`).
 
 ```bash
-uv sync --python 3.12
+uv sync --python 3.12 --all-extras
 uv run --python 3.12 pytest -v
 uv run --python 3.12 uvicorn haris.service:app --host 127.0.0.1 --port 8080
 ```
+
+`--all-extras` is not optional. The contract types come from the organizers' kit, which is
+not on PyPI and therefore cannot sit in `dependencies` (see `pyproject.toml`); the test
+runner is an extra too. Without the flag `uv sync` installs the four base dependencies,
+stops, and the next line fails with `No module named 'sentinel'`.
 
 Then, from the official starter kit directory:
 
@@ -164,5 +169,12 @@ trust chain, and the data flow from a sensitive value to the destination that wa
 Move through steps with `J` and `K`; jump to the first intervention with `B`.
 
 A trace recorded by any other defense still renders, just without the decomposition.
+
+## Demo
+
+The shot plan for the video demonstration is
+[`docs/report/video-plan.md`](docs/report/video-plan.md): four scenarios, the exact commands,
+the decisions and reason codes each one actually produced, and the narration keyed to the
+panels of the trace viewer. It includes the failure we show on camera.
 
 See `CLAUDE.md` for the full contract, the environment traps, and the command reference.
