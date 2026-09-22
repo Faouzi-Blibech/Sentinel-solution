@@ -306,7 +306,7 @@ needs the values, which only it can keep.
 ## 9. Reproduce
 
 ```bash
-uv run --python 3.12 pytest                                   # 233 tests
+uv run --python 3.12 pytest                                   # 237 tests
 scripts/run_eval.sh            <kit> public                   # and: validation
 scripts/run_ablation.sh        <kit> public                   # baseline ladder
 scripts/run_redteam.sh         <kit>                          # held-out ladder

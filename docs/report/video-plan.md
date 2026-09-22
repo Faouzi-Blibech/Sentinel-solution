@@ -19,7 +19,7 @@ If a number on screen differs from a number here, trust the screen and fix this 
 
 ```bash
 uv sync --python 3.12 --all-extras
-uv run --python 3.12 pytest -q                       # 233 passed, 2 skipped
+uv run --python 3.12 pytest -q                       # 237 passed, 2 skipped
 ```
 
 Two windows, side by side, dark terminal, font at least 18pt so the trace is readable when
@@ -270,11 +270,11 @@ Two things to say, in this order. The second one is the one judges remember.
 ## 8:20 – 9:00 · Close
 
 ```bash
-uv run --python 3.12 pytest -q          # 233 passed, 2 skipped
+uv run --python 3.12 pytest -q          # 237 passed, 2 skipped
 ```
 
 > ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000, zero defense errors on both kit splits and on
-> the twelve scenarios we wrote; p95 28 ms; 233 tests, every security fix with a regression
+> the twelve scenarios we wrote; p95 28 ms; 237 tests, every security fix with a regression
 > test that failed first.
 >
 > And what it does not do: it does not defend against a compromised runtime, a malicious
