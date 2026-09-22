@@ -120,23 +120,33 @@ adaptive attacker, whose memory made each arm face different attacks; see `repor
 | **all but trust + authority** | **0.935** | **0.725** | 0.000 | **0.091** | 29 of 31 |
 | *none (submitted)* | 0.000 | 0.000 | 0.000 | 0.999 | -- |
 
-### On our twelve held-out scenarios
+### On our twelve held-out scenarios, plus one regression scenario
 
 | stage removed | ASR | CVR | official | what gets through |
 |---|---|---|---|---|
 | instruction authority | 0.000 | 0.000 | 1.000 | nothing |
 | memory authority | 0.000 | 0.000 | 1.000 | nothing |
-| **capability commitment** | **0.250** | 0.083 | **0.865** | unauthorized capability, monitor evasion |
+| **capability commitment** | **0.222** | 0.077 | **0.874** | unauthorized capability, monitor evasion |
 | confirmation lifecycle | 0.000 | 0.000 | 1.000 | nothing |
-| **data flow** | **0.375** | **0.250** | **0.703** | data exfiltration, memory poisoning, tool-output manipulation |
-| rewrite ladder | 0.000 | 0.000 | 1.000 | nothing |
-| **all but trust + authority** | **0.875** | **0.583** | **0.311** | 7 of 8 |
+| **data flow** | **0.444** | **0.308** | **0.630** | data exfiltration, memory poisoning, tool-output manipulation |
+| **taint memory** | **0.111** | 0.077 | **0.904** | the window-rollover retry, and only that |
+| rewrite ladder | 0.000 | 0.000 | 0.990 (FBR 0.041) | nothing |
+| **all but trust + authority** | **0.889** | **0.615** | **0.273** | 8 of 9 |
 | *none (submitted)* | 0.000 | 0.000 | 1.000 | -- |
 
 BTU is 1.000 in every row. **Capability commitment and data flow carry the load, and
 they carry different attacks:** commitment stops the agent being redirected, data flow stops
 what it already knows from leaving. Rewrite carries utility rather than safety: without it,
 a leaking draft is blocked where it could have been sent redacted.
+
+The thirteenth scenario is `redteam/regression/haris_regression_fin_window_rollover_retry.yaml`,
+written after the taint-memory fix to give that stage something to measure -- without it the
+arm read exactly like the submitted configuration on every corpus we owned. It is tagged
+`regression`, not `held_out`, and `scripts/run_redteam.sh` still runs the original twelve, so
+the cross-defense ladder in §3 is unchanged by it: a scenario written after a fix must not be
+allowed to widen our margin over anybody else's defense. `report.md` §5 records its measured
+step-14 boundary and the two properties of it we would rather state than have a reader
+discover.
 
 Four stages can be removed one at a time without an attack getting through. That is the
 honest shape of the result: **the stages are redundant against any single attack**, so a

@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +66,19 @@ def test_verify_clean_clone_script_is_executable_and_well_formed():
     # launcher translates the calling process's own working directory into the matching
     # /mnt/... path before running the command; MSYS resolves the same relative path
     # natively. Verified against both bashes on this machine.
+    #
+    # One more wrinkle, found the hard way: on a machine where WSL is installed but its
+    # service is not running, that same bash exits 1 with "A connection attempt failed"
+    # -- the same exit code a real syntax error gives. Failing here would then report a
+    # broken script when the script is fine and the machine's WSL is not. So prove bash
+    # can run at all first, and skip when it cannot; a syntax error still fails loudly
+    # wherever a working bash exists, which includes CI.
+    try:
+        usable = subprocess.run(["bash", "-c", "exit 0"], cwd=ROOT, capture_output=True)
+    except OSError:  # no bash on PATH at all
+        pytest.skip("no bash on PATH to check shell syntax with")
+    if usable.returncode != 0:
+        pytest.skip("the bash on PATH cannot run (a stopped WSL service does this)")
     subprocess.run(["bash", "-n", rel], cwd=ROOT, check=True)
 
 
