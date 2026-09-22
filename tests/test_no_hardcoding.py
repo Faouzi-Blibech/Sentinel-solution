@@ -17,10 +17,10 @@ Three things are verified:
    required to read, none of which is hard-coding.
 2. No module in `src/haris/` reads `run_id` or `step_id` AS A LABEL outside the journal,
    which records them after the decision is made and never feeds them back into it.
-   `recall.py` gets a narrower, field-scoped exemption for `run_id` only -- see the
-   comment at `RUN_SCOPED_MEMORY` below for the distinction this rule is actually
-   drawing. It gets no exemption for `step_id`, and this file tests that the narrowing
-   holds.
+   `recall.py` gets a narrower, field-scoped exemption for `run_id` only, recorded in
+   `RUN_SCOPED_FIELD_EXEMPTIONS` below -- see the comment there for the distinction this
+   rule is actually drawing. It gets no exemption for `step_id`, and this file tests
+   that the narrowing holds.
 3. The extractor still matches the shapes it claims to. An audit that cannot fail is
    worse than no audit, and this one shipped broken once already: a word-boundary escape
    written through a shell heredoc became a literal backspace byte, so the pattern
