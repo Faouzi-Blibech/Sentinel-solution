@@ -582,3 +582,76 @@ breach it too (otherwise there is no attack), and no benign hard negative may st
 - The two ablation arms differ on it, with the measured numbers in the report.
 - `uv run --python 3.12 pytest -o addopts="" -q` is green.
 - `docs/report/ablation-stages.json` regenerated, and the delta stated.
+
+---
+
+## Task 6 — display-name recipients are misread as external (stretch)
+
+### The defect
+
+`src/haris/dataflow.py::_destinations`, for a routing key (`to`, `recipient`, …), appends the
+**raw** value and then also the addresses `_EMAIL` extracts from it:
+
+```python
+if key.lower() in _DESTINATION_KEYS:
+    found.append(value)              # "Alice <alice@corp.example>"
+found.extend(_EMAIL.findall(value))  # "alice@corp.example"
+```
+
+`_destination_class` then requires every destination to be internal, and
+`PolicyView.is_internal_destination` is a suffix check. The raw string ends in `>`, so it fails,
+and an email addressed to an internal colleague in the ordinary `"Name <address>"` form is
+classified EXTERNAL. A confidential value in it is then treated as a leak. This is an
+**over-block in the scored decision path** — `/v1/decision` reaches it with ordinary input — and
+over-blocking is this project's expensive failure. It predates today; no current corpus
+exercises it, which is why every split still scores 1.000. Found by the Task 2 re-reviewer
+testing `_destinations` directly.
+
+### The trap — the obvious fix is a fail-open
+
+"Drop the raw value whenever an address was extracted" is wrong. `_EMAIL` stops at `>` and its
+look-behind refuses an `@` preceded by a non-local-part character, so for an adversarial value
+such as `"Alice <alice@corp.example>@evil.example"` it extracts ONLY `alice@corp.example`.
+Dropping the raw value there reclassifies a malformed, attacker-shaped destination as INTERNAL.
+That converts an over-block into a fail-open, which is strictly worse.
+
+### What to build
+
+Drop the raw value **only when it parses completely** as a list of recipients in standard form,
+each either a bare address or an optional display name followed by `<address>`, separated by
+commas or semicolons, with nothing left over. The display name must not itself contain `@`, `<`
+or `>` — otherwise `"alice@evil.example <alice@corp.example>"` is a sneak path. When the value
+parses fully, judge the extracted addresses; when it does not, keep the raw value exactly as
+today, so anything unusual stays conservatively external. URLs and non-email destinations must
+behave exactly as before.
+
+Record the trap in a comment at the change — a future reader will otherwise "simplify" it into
+the fail-open.
+
+### Tests — `tests/test_dataflow.py`, each written first and watched fail
+
+Classification, with `internal_email_domains=["corp.example"]`:
+1. `"Alice <alice@corp.example>"` → internal.
+2. `"Alice <alice@corp.example>, \"Bob, Jr.\" <bob@corp.example>"` → internal (a quoted display name
+   containing a comma must not split the list wrongly).
+3. `"Alice <alice@corp.example>, Mallory <m@evil.example>"` → external.
+4. `"Alice <alice@evil.example>"` → external.
+5. `"Alice <alice@corp.example>@evil.example"` → external (the fail-open trap).
+6. `"alice@evil.example <alice@corp.example>"` → external (an address hiding in the display name).
+7. A bare internal address, a bare external address, a URL, and an opaque non-email destination
+   each classify exactly as they do at HEAD — pin today's behaviour before changing anything.
+
+End to end through `engine.decide`: a confidential value emailed to `"Alice <alice@corp.example>"`
+is NOT treated as a leak, and the same value to `"Mallory <m@evil.example>"` still is.
+
+### Constraints
+
+- Scope: `src/haris/dataflow.py` and `tests/test_dataflow.py` only.
+- This touches the path scored at 1.000. Full suite and `tests/test_no_hardcoding.py` must pass;
+  the controller re-scores both splits afterwards and the change is reverted if either moves.
+- No domain name, address or payload literal in `src/haris/` — the test file may contain them.
+
+### Done when
+
+The seven classification tests and the end-to-end pair pass, each proven to fail at HEAD (or, for
+7, proven unchanged from HEAD), and the full suite is green.

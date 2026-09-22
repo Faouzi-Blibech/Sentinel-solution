@@ -18,10 +18,18 @@ KIT="$(cd "$KIT" && pwd)"
 # same arm makes this abort rather than overwrite. Start each ablation from clean.
 rm -rf "$KIT/artifacts/ablation"
 
+# redteam/regression holds scenarios written after our own fixes, to test those fixes --
+# they belong in the ablation (which asks "does removing our stage break something we
+# already know about") but not in the cross-defense ladder in run_redteam.sh, where
+# including them would penalize every other baseline for a scenario it never had a
+# chance to be tuned against either. --scenario is repeatable and adds to --scenarios;
+# see redteam/harness.py's Matrix.run().
+#
 # From the repo root: `python -m redteam.harness` resolves the package from there.
 ( cd "$HERE" && $UV run --python 3.12 python -m redteam.harness \
   --kit "$KIT" \
   --scenarios "$HERE/redteam/scenarios" \
+  --scenario "$HERE/redteam/regression/haris_regression_fin_window_rollover_retry.yaml" \
   --ablation \
   --artifacts "$KIT/artifacts/ablation" \
   --out "$HERE/docs/report/ablation-stages.json" )
