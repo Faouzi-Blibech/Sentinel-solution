@@ -201,6 +201,8 @@ ins.add {
   color: var(--ink); font-size: .8rem; font-weight: 600; letter-spacing: .04em; line-height: 1.25; white-space: nowrap;
 }
 .mode:hover { border-color: var(--ink-faint); }
+/* The console link borrows .mode's chrome; as an <a> it needs the text bits back. */
+a.mode { text-decoration: none; display: inline-flex; align-items: center; }
 
 .main { flex: 1; min-height: 0; display: flex; }
 .stage { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -681,6 +683,7 @@ html.no-legend .legend { display: none; }
         <span class="key opt"><kbd>[ ]</kbd>run</span>
         <span class="key opt"><kbd>?</kbd>legend</span>
       </div>
+      <a class="mode" id="guardlink" href="/guard" title="Judge a tool call from any agent, live">connect an agent &rarr;</a>
       <button class="mode" id="mode" type="button"></button>
     </div>
   </header>

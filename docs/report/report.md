@@ -155,13 +155,19 @@ different systems.
 
 ### 4.1 Using HARIS outside the kit
 
-Its trace lives with the caller, not in our viewer. The trace viewer builds its run list from
-the simulator's artifact files, and the guard is called by agents the simulator never runs, so
-a guard decision produces no artifact for it to show. The guard returns the same decomposition
-the dashboard renders -- decision, risk, confidence, reason codes, and the metadata showing
-which signals fired -- and `examples/guard_any_agent.py` prints exactly that, per step. Wiring
-guard traffic into the viewer would need the journal to synthesise runs of its own; we have not
-done it, and say so rather than leave a judge looking for a panel that cannot exist.
+It has its own console in the observability layer: **`/guard`**, linked from the trace viewer's
+header. Paste the tool call a model proposed -- OpenAI, Anthropic or plain JSON -- with the
+untrusted content the agent read, and it renders the verdict the way the trace viewer renders a
+recorded one: decision, risk against the escalate and block thresholds, confidence, reason
+codes, the per-signal risk decomposition, and the redacted action sent instead. It calls the
+guard in-process, so it needs no second server and no cross-origin request, and the scored
+service is untouched.
+
+Why a separate page rather than a row in the run list: the viewer builds that list from the
+simulator's artifact files, and the guard is called by agents the simulator never runs, so a
+guard decision produces no artifact to list. Making guard calls appear as runs would mean the
+journal synthesising runs of its own; the console shows the same decomposition without that.
+`examples/guard_any_agent.py` prints the same trace per step for a terminal demo.
 
 Every stage above decides from a `DefenseRequest` -- a plain, frozen pydantic object with
 a goal, a conversation, a candidate action, provenance, and a policy dict. Nothing in

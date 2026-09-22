@@ -65,6 +65,54 @@ def create_app(artifacts: Path | Sequence[Path] | None = None, journal: Path | S
     def index() -> FileResponse:
         return FileResponse(STATIC / "index.html")
 
+    @app.get("/guard")
+    def guard_console() -> FileResponse:
+        """The connect-your-agent console.
+
+        The trace viewer can only show runs the simulator produced, and the guard is called
+        by agents the simulator never runs -- so guard decisions have no artifact to appear
+        in. This page is where that half of HARIS is visible: it calls the guard in-process,
+        which means no second server, no CORS, and no change to the scored service.
+        """
+        return FileResponse(STATIC / "guard.html")
+
+    @app.post("/api/guard")
+    def guard_check(payload: dict) -> JSONResponse:
+        # In-process on purpose. Proxying to the live service would make this page depend on
+        # a second process being up and on a cross-origin request the browser would block.
+        try:
+            from haris.guard import HarisGuard
+
+            body = payload if isinstance(payload, dict) else {}
+            policy = body.get("policy") if isinstance(body.get("policy"), dict) else {}
+            guard = HarisGuard(
+                allowed_tools=policy.get("allowed_tools"),
+                consequential_tools=policy.get("consequential_tools"),
+                confirmation_required_tools=policy.get("confirmation_required_tools"),
+                internal_email_domains=policy.get("internal_email_domains"),
+            )
+            verdict = guard.check(
+                goal=str(body.get("goal", "")),
+                proposed=body.get("proposed"),
+                messages=body.get("messages") or (),
+                sources=body.get("sources") or (),
+                run_id=body.get("run_id"),
+            )
+            return JSONResponse(
+                {
+                    "decision": verdict.decision,
+                    "risk": verdict.risk,
+                    "confidence": verdict.confidence,
+                    "reason_codes": verdict.reason_codes,
+                    "explanation": verdict.explanation,
+                    "rewritten": verdict.rewritten,
+                    "action_digest": verdict.action_digest,
+                    "metadata": verdict.metadata,
+                }
+            )
+        except Exception as error:  # noqa: BLE001 -- a console must report, never 500
+            return JSONResponse({"error": f"{type(error).__name__}: {error}"}, status_code=200)
+
     @app.get("/api/config")
     def config() -> JSONResponse:
         # Read at request time from the engine's own settings, so the thresholds drawn on
