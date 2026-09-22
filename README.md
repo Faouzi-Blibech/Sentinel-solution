@@ -97,10 +97,15 @@ the official score multiplies by an `efficiency_factor` derived from it.
 Python **3.12** is required (`>=3.12,<3.13`).
 
 ```bash
-uv sync --python 3.12
+uv sync --python 3.12 --all-extras
 uv run --python 3.12 pytest -v
 uv run --python 3.12 uvicorn haris.service:app --host 127.0.0.1 --port 8080
 ```
+
+`--all-extras` is not optional. The contract types come from the organizers' kit, which is
+not on PyPI and therefore cannot sit in `dependencies` (see `pyproject.toml`); the test
+runner is an extra too. Without the flag `uv sync` installs the four base dependencies,
+stops, and the next line fails with `No module named 'sentinel'`.
 
 Then, from the official starter kit directory:
 
