@@ -457,6 +457,19 @@ above the sibling path. Verified: with the kit visible, all five tests pass agai
 Also state in `docs/KIT_PATH.md` where to clone it so the audit finds it, and that
 `Sentinel_Starter_Kit/` inside the checkout is gitignored (4a).
 
+### 4e — `.dockerignore`
+
+There is none. The build context therefore ships the 34 MB Windows `.venv`, `artifacts/`,
+`.git`, `.superpowers/` and the 1.7 MB kit clone to the daemon on every build. The image
+itself is unaffected — the `Dockerfile` copies only `pyproject.toml`, `README.md` and `src`,
+verified — so this is build time and hygiene, not a packaging bug. Add a `.dockerignore`
+covering at least: `.venv/`, `.git/`, `.github/`, `artifacts/`, `.superpowers/`,
+`Sentinel_Starter_Kit/`, `**/__pycache__/`, `.pytest_cache/`, `*.pdf`, `docs/`, `tests/`,
+`dashboard/`, `redteam/`, `scripts/`, `examples/`.
+
+Keep a comment at the top recording why the image is unaffected, so a future reader does not
+conclude the venv was being baked in.
+
 ### Tests
 
 `tests/test_submission.py` is the right home for a cheap assertion that `.gitignore` covers
