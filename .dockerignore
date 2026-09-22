@@ -1,0 +1,20 @@
+# There was no .dockerignore, so every `docker build .` shipped the whole checkout to the
+# daemon: a 34 MB Windows .venv, .git, .superpowers/, artifacts/ and the 1.7 MB kit clone.
+# The IMAGE was never affected by this -- the Dockerfile COPYs only pyproject.toml,
+# README.md and src, verified by reading it -- so this file is build-time and hygiene, not
+# a packaging fix. Do not read its absence as evidence the venv was being baked in.
+.venv/
+.git/
+.github/
+artifacts/
+.superpowers/
+Sentinel_Starter_Kit/
+**/__pycache__/
+.pytest_cache/
+*.pdf
+docs/
+tests/
+dashboard/
+redteam/
+scripts/
+examples/

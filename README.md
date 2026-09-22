@@ -113,6 +113,19 @@ Then, from the official starter kit directory:
 uv run sentinel eval public --defense-url http://127.0.0.1:8080
 ```
 
+To check that a **fresh clone** of this repository actually works end to end -- not just
+this working tree, which has had months of `.venv` and cache state to hide a broken
+reproduction step -- clone into a scratch directory and run the whole quick start there:
+
+```bash
+scripts/verify_clean_clone.sh                              # local clone, offline
+scripts/verify_clean_clone.sh https://github.com/<org>/<repo>.git   # a pushed remote
+scripts/verify_clean_clone.sh "" /path/to/Sentinel_Starter_Kit       # + one real scenario
+```
+
+A local clone only ever sees committed state, which is the point: it is exactly what a judge's
+`git clone` would see, uncommitted work and all its untested fixes included or not.
+
 ### In Docker
 
 ```bash

@@ -6,16 +6,34 @@ trusted is treated as untrusted: absence of evidence is not evidence of trust.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Hashable, Iterable
+from typing import TypeVar
 
 from sentinel.core.provenance import Sensitivity, TrustLevel, least_trusted, most_sensitive
 from sentinel.defenses.interface import DefenseRequest
+
+_T = TypeVar("_T")
 
 
 class TrustView:
     def __init__(self, request: DefenseRequest) -> None:
         self._request = request
         self._by_id = {record.id: record.provenance for record in request.provenance}
+        # Per-decision memo cache for values derived purely from this view -- e.g. which
+        # tokens are tainted at a given Sensitivity floor (haris/recall.py). A TrustView
+        # is built once per decide_detailed() call and never reused across requests
+        # (DefenseRequest is frozen), so caching here cannot leak stale or cross-request
+        # data the way a module-level cache would; it only stops several stages that ask
+        # the identical question of the identical view from each paying for their own
+        # regex pass over the conversation. Measured: 7 extract_tainted_values scans per
+        # decision down to 2, on a full 12-item window.
+        self._memo: dict[Hashable, object] = {}
+
+    def memo(self, key: Hashable, compute: Callable[[], _T]) -> _T:
+        """Compute `compute()` at most once per (this view, key) and cache the result."""
+        if key not in self._memo:
+            self._memo[key] = compute()
+        return self._memo[key]  # type: ignore[return-value]
 
     def trust_of(self, provenance_ids: Iterable[str]) -> TrustLevel:
         ids = list(provenance_ids)

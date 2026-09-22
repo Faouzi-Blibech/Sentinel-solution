@@ -150,6 +150,9 @@ uv run sentinel eval public --defense-url http://127.0.0.1:8080 \
 
 # replay a trace
 uv run sentinel replay artifacts/<run>.jsonl
+
+# prove a clean clone works end to end -- the judge's path, not this working tree
+scripts/verify_clean_clone.sh
 ```
 
 ## Style

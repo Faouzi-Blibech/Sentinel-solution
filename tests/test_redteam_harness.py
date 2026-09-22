@@ -1,6 +1,6 @@
 import pytest
 
-from redteam.harness import Arm, attacker_factory, by_family, render_families, render_table, summarize
+from redteam.harness import ABLATION_ARMS, Arm, attacker_factory, by_family, render_families, render_table, summarize
 
 
 class _Outcome:
@@ -74,3 +74,17 @@ def test_render_families_marks_missing_cells():
     out = render_families(rows)
     assert "indirect_prompt_injection" in out
     assert "0/1" in out
+
+
+def test_taint_memory_ablation_arm_sits_right_after_no_data_flow():
+    labels = [arm.label for arm in ABLATION_ARMS]
+    i = labels.index("haris: no data flow")
+    assert labels[i + 1] == "haris: no taint memory"
+    taint_arm = ABLATION_ARMS[i + 1]
+    assert taint_arm.ablate == ("taint",)
+    assert taint_arm.in_process and taint_arm.attacker == "mutation"
+
+
+def test_trust_and_authority_only_arm_still_means_every_other_stage_off():
+    (arm,) = [a for a in ABLATION_ARMS if a.label == "haris: trust + authority only"]
+    assert set(arm.ablate) == {"plan", "lifecycle", "dataflow", "rewrite", "memory", "taint"}
