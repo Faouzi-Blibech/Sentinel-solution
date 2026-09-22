@@ -1,11 +1,15 @@
 <!--
-Internal note, not part of the posted issue body (kept out of the rendered text below so
-`gh issue create --body-file` never sends it): filed against
-github.com/Skan22/Sentinel_Starter_Kit, commit dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2 (the
-pinned reference for this submission). Not filed by us -- this file is the ready-to-paste
-issue body; filing it is left to whoever owns the GitHub account. Our fuller write-up and
-raw trace live in our own report (docs/report/report.md §6), which the organizers cannot
-see, so nothing below points a reader at it.
+Internal note. `gh issue create --body-file` transmits this file verbatim, so this comment
+still reaches GitHub as part of the posted issue -- recoverable from the issue's Edit view,
+its raw body, and the API. The only thing true here is that GitHub does not *render* an HTML
+comment in the normal issue view, so a reader who just opens the issue sees none of this.
+
+Filed against github.com/Skan22/Sentinel_Starter_Kit, commit
+dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2 (the pinned reference for this submission). Not
+filed by us -- this file is the ready-to-paste issue body; filing it is left to whoever owns
+the GitHub account. Our fuller write-up and raw trace live in our own report
+(docs/report/report.md §6), which the organizers cannot see, so nothing below points a
+reader at it.
 -->
 
 Both defects live in `src/sentinel/models/ollama_adapter.py`, class `OllamaModelAdapter`. We
@@ -89,7 +93,8 @@ scheme-less form and a full URL). Every real-model number in our own report was 
 through this subclass.
 
 <!--
-Internal note, not part of the posted issue body: to file this,
+Hidden from the rendered issue, not from what gets transmitted (see the note at the top of
+this file). To file this,
 
 gh issue create \
   --repo Skan22/Sentinel_Starter_Kit \
