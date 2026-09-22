@@ -155,6 +155,14 @@ different systems.
 
 ### 4.1 Using HARIS outside the kit
 
+Its trace lives with the caller, not in our viewer. The trace viewer builds its run list from
+the simulator's artifact files, and the guard is called by agents the simulator never runs, so
+a guard decision produces no artifact for it to show. The guard returns the same decomposition
+the dashboard renders -- decision, risk, confidence, reason codes, and the metadata showing
+which signals fired -- and `examples/guard_any_agent.py` prints exactly that, per step. Wiring
+guard traffic into the viewer would need the journal to synthesise runs of its own; we have not
+done it, and say so rather than leave a judge looking for a panel that cannot exist.
+
 Every stage above decides from a `DefenseRequest` -- a plain, frozen pydantic object with
 a goal, a conversation, a candidate action, provenance, and a policy dict. Nothing in
 `haris/engine.py` or the six stages it calls reads a scenario id, a simulator hook, or
