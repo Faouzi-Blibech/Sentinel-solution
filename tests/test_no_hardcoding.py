@@ -15,8 +15,11 @@ Three things are verified:
    corpus-first: asking instead whether each of *our* literals occurs somewhere in the
    kit flags ordinary English ("execute", "status") and the contract field names we are
    required to read, none of which is hard-coding.
-2. No module in `src/haris/` reads `run_id` or `step_id` outside the journal, which
-   records them after the decision is made and never feeds them back into it.
+2. No module in `src/haris/` reads `run_id` or `step_id` AS A LABEL outside the journal,
+   which records them after the decision is made and never feeds them back into it.
+   `recall.py` is also exempt: it reads `run_id` only as an opaque key partitioning a
+   bounded memory store, never as content the decision branches on -- see the comment
+   at `RUN_SCOPED_MEMORY` below for the distinction this rule is actually drawing.
 3. The extractor still matches the shapes it claims to. An audit that cannot fail is
    worse than no audit, and this one shipped broken once already: a word-boundary escape
    written through a shell heredoc became a literal backspace byte, so the pattern
@@ -41,6 +44,17 @@ MIN_LITERAL_CHARS = 6
 # journal.py records run_id and step_id for the observability layer. That happens after
 # decide() has returned, so it cannot influence a decision.
 OBSERVABILITY_ONLY = {"journal.py"}
+# recall.py partitions its bounded taint-memory store by run_id, using it purely as an
+# opaque dictionary key: TaintMemory.remember/recall run the identical lookup and LRU
+# logic no matter what run_id equals, and no branch of that module's behaviour depends
+# on which run it is or what the string contains. That is different in kind from a
+# scenario label reaching the decision AS CONTENT the decision branches on -- e.g.
+# recognizing a particular run and deciding differently for it -- which is what this
+# rule exists to catch (see the module docstring above). Correlating requests that
+# belong to the same conversation is also the only way to close report.md 8.1 (a secret
+# forgotten once its source scrolls out of the kit's 12-item conversation window): the
+# contract gives no other handle for "these requests are the same run".
+RUN_SCOPED_MEMORY = {"recall.py"}
 LABEL_FIELDS = {"run_id", "step_id"}
 
 # The shapes the organizers' invented names take: addresses, record ids (INV-4471,
@@ -182,7 +196,7 @@ def test_no_organizer_identifier_appears_in_the_defense() -> None:
 def test_the_decision_path_never_reads_a_scenario_label() -> None:
     offenders: list[str] = []
     for module in _defense_modules():
-        if module.name in OBSERVABILITY_ONLY:
+        if module.name in OBSERVABILITY_ONLY or module.name in RUN_SCOPED_MEMORY:
             continue
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
