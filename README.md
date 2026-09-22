@@ -170,4 +170,11 @@ Move through steps with `J` and `K`; jump to the first intervention with `B`.
 
 A trace recorded by any other defense still renders, just without the decomposition.
 
+## Demo
+
+The shot plan for the video demonstration is
+[`docs/report/video-plan.md`](docs/report/video-plan.md): four scenarios, the exact commands,
+the decisions and reason codes each one actually produced, and the narration keyed to the
+panels of the trace viewer. It includes the failure we show on camera.
+
 See `CLAUDE.md` for the full contract, the environment traps, and the command reference.
