@@ -12,8 +12,11 @@ therefore take an os.pathsep-separated list, the same shape as PATH.
 from __future__ import annotations
 
 import os
+import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
@@ -52,6 +55,30 @@ def create_app(artifacts: Path | Sequence[Path] | None = None, journal: Path | S
 
     app = FastAPI(title="HARIS trace viewer")
 
+    # One scan at a time, shared by every poll that arrives while it runs. Behind Docker
+    # Desktop a scan of a large artifacts folder took minutes; the page polls every five
+    # seconds, so each poll started another scan and they piled up. A scan that finished
+    # after a request arrived is as fresh as a new one, so waiting requests reuse it and a
+    # later request still rescans: new runs keep appearing.
+    listing_lock = threading.Lock()
+    listing: dict[str, Any] = {"finished": float("-inf"), "runs": []}
+
+    def _listed_runs() -> list[dict[str, Any]]:
+        asked = time.perf_counter()
+        with listing_lock:
+            if listing["finished"] > asked:
+                return listing["runs"]
+            found = discover_runs(roots)
+            listing.update(finished=time.perf_counter(), runs=found)
+            return found
+
+    # The first listing reads every trace once; behind Docker Desktop's file sharing that
+    # took two minutes for ~3,500 runs, and later listings take under a second. The
+    # container asks for it at startup, in the background, so the page is usually ready by
+    # the time anyone opens it. Off by default: tests and local runs list on demand.
+    if os.environ.get("HARIS_DASHBOARD_PRELOAD") == "1":
+        threading.Thread(target=_listed_runs, name="preload-runs", daemon=True).start()
+
     def _checked(path: str) -> Path:
         """Reject anything outside the artifacts roots: this endpoint reads by path."""
         candidate = Path(path).resolve()
@@ -84,7 +111,7 @@ def create_app(artifacts: Path | Sequence[Path] | None = None, journal: Path | S
             return JSONResponse(
                 {"runs": [], "root": listed[0] if listed else "", "roots": listed, "error": "artifacts directory not found"}
             )
-        return JSONResponse({"runs": discover_runs(roots), "root": listed[0], "roots": listed})
+        return JSONResponse({"runs": _listed_runs(), "root": listed[0], "roots": listed})
 
     @app.get("/api/run")
     def run(path: str = Query(...)) -> JSONResponse:
