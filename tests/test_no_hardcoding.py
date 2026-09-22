@@ -35,6 +35,7 @@ import ast
 import os
 import pathlib
 import re
+import sys
 
 import pytest
 
@@ -121,6 +122,10 @@ def _kit_root() -> pathlib.Path | None:
     for candidate in (
         os.environ.get("SENTINEL_KIT"),
         pathlib.Path.home() / "Desktop" / "Sentinel_Starter_Kit",
+        # docs/KIT_PATH.md tells a reader to clone the kit; most clone it straight into the
+        # checkout they are already sitting in. That used to be invisible to this list, so
+        # the audit skipped by default and only CI -- which sets SENTINEL_KIT -- was covered.
+        SOURCE.parents[1] / "Sentinel_Starter_Kit",
         SOURCE.parents[2] / "Sentinel_Starter_Kit",
     ):
         if candidate is None:
@@ -208,3 +213,20 @@ def test_the_decision_path_never_reads_a_scenario_label() -> None:
 def test_every_defense_module_is_covered_by_this_audit() -> None:
     """A new module must not slip past the audit by being added after it was written."""
     assert len(_defense_modules()) >= 14, "defense modules moved; re-check the audit scope"
+
+
+def test_kit_root_finds_a_kit_placed_inside_the_checkout(tmp_path, monkeypatch) -> None:
+    """`docs/KIT_PATH.md` tells a reader to clone the kit; most clone it into the checkout,
+    where the disqualification audit above silently skipped it until this candidate existed
+    -- CI stayed green only because it sets SENTINEL_KIT explicitly. A tmp_path stand-in
+    proves the candidate without depending on a real clone sitting on disk.
+    """
+    monkeypatch.delenv("SENTINEL_KIT", raising=False)
+    # Neutralize the Desktop candidate so this test cannot pass or fail on what happens to
+    # be sitting on the machine that runs it.
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path / "not-a-real-home")
+    checkout = tmp_path / "checkout"
+    kit = checkout / "Sentinel_Starter_Kit"
+    (kit / "scenarios").mkdir(parents=True)
+    monkeypatch.setattr(sys.modules[__name__], "SOURCE", checkout / "src" / "haris")
+    assert _kit_root() == kit
