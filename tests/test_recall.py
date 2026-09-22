@@ -14,7 +14,6 @@ import os
 import subprocess
 import sys
 
-import pytest
 from sentinel.core.actions import ActionType, CandidateAction, Decision
 from sentinel.core.provenance import Sensitivity, TrustLevel
 from sentinel.defenses.interface import ConversationItem
@@ -30,14 +29,9 @@ from tests.factories import make_request
 KEY = "KYC-90F3AE7C21D5"
 VAULT = {"vault": (TrustLevel.TRUSTED_INTERNAL, Sensitivity.RESTRICTED)}
 
-
-@pytest.fixture(autouse=True)
-def _reset_memory():
-    """Every test starts from an empty store -- a leftover value from an earlier test
-    remembering it would let a test pass for the wrong reason."""
-    MEMORY.clear()
-    yield
-    MEMORY.clear()
+# MEMORY is reset before and after every test suite-wide by tests/conftest.py -- this
+# file used to carry its own autouse fixture, but that only ever covered this one file
+# (see conftest.py's docstring for the cross-file pollution it left behind).
 
 
 def _source_item() -> ConversationItem:
@@ -136,18 +130,23 @@ def test_more_than_max_values_per_run_caps_that_run():
 
 
 def test_recalling_a_value_counts_as_a_touch_for_eviction():
-    """'Least recently used' means remembered OR recalled. Touching alpha by recalling
-    it must save it from the next eviction, even though bravo was remembered more
-    recently than alpha was first written."""
+    """'Least recently used' means remembered OR recalled. `alpha` is written first, so
+    without the touch it is the older of the two and would be evicted when `charlie`
+    trips the cap. Recalling ONLY `alpha` (at a rank `bravo` does not clear) must move it
+    ahead of `bravo` instead -- so `bravo`, now the least recently touched, is the one
+    evicted, and `alpha` survives.
+
+    Proven load-bearing per the coordinator's review: red without the `recall()` touch
+    loop (deleting the `run.move_to_end(token)` loop at recall.py:98-99 makes this fail,
+    verified and reported alongside this fix), green with it.
+    """
     mem = TaintMemory(max_runs=10, max_values_per_run=2)
     mem.remember("r1", {"alpha": Sensitivity.RESTRICTED.rank})
-    mem.remember("r1", {"bravo": Sensitivity.RESTRICTED.rank})
-    mem.recall("r1", Sensitivity.PUBLIC.rank)  # touches alpha and bravo, alpha first
-    mem.recall("r1", Sensitivity.PUBLIC.rank)  # touch again; order among hits is deterministic
+    mem.remember("r1", {"bravo": Sensitivity.CONFIDENTIAL.rank})
+    mem.recall("r1", Sensitivity.RESTRICTED.rank)  # touches ONLY alpha: bravo is below this floor
     mem.remember("r1", {"charlie": Sensitivity.RESTRICTED.rank})
     kept = mem.recall("r1", Sensitivity.PUBLIC.rank)
-    assert len(kept) == 2
-    assert "charlie" in kept
+    assert "alpha" in kept and "bravo" not in kept, f"recall() did not save alpha from eviction: {kept}"
 
 
 # --- 5. Determinism -----------------------------------------------------------------------
