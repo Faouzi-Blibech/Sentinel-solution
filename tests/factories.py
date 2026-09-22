@@ -42,13 +42,14 @@ def make_request(
     policy_context: dict[str, Any] | None = None,
     history_digest: HistoryDigest | None = None,
     step_id: int = 1,
+    run_id: str = "test-run",
 ) -> DefenseRequest:
     records = [
         ProvenanceRecord(id=pid, provenance=make_provenance(trust, sens))
         for pid, (trust, sens) in (provenance or {}).items()
     ]
     return DefenseRequest(
-        run_id="test-run",
+        run_id=run_id,
         step_id=step_id,
         user_goal=user_goal,
         conversation=conversation or [],
