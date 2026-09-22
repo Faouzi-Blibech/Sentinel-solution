@@ -117,3 +117,46 @@ def test_artifact_roots_parse_from_an_os_path_list(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HARIS_ARTIFACTS", os.pathsep.join([str(tmp_path / "a"), str(tmp_path / "b"), ""]))
     assert artifact_roots() == [tmp_path / "a", tmp_path / "b"]
+
+
+def test_concurrent_polls_share_one_scan(tmp_path, monkeypatch):
+    """The page polls every five seconds. Behind Docker Desktop one scan took minutes, so
+    each poll started another and they piled up. Requests that arrive while a scan runs
+    now wait for it and share its result."""
+    import threading
+    import time
+
+    import dashboard.app as app_module
+
+    (tmp_path / "artifacts").mkdir()
+    scans = []
+
+    def slow_scan(roots):
+        scans.append(1)
+        time.sleep(0.5)
+        return []
+
+    monkeypatch.setattr(app_module, "discover_runs", slow_scan)
+    test_client = TestClient(app_module.create_app(tmp_path / "artifacts"))
+    statuses = []
+    threads = [threading.Thread(target=lambda: statuses.append(test_client.get("/api/runs").status_code)) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert statuses == [200] * 4
+    assert len(scans) == 1
+
+
+def test_a_poll_after_a_finished_scan_rescans(tmp_path, monkeypatch):
+    """Sharing must never serve a stale list: a request that arrives after a scan ended
+    gets a new one, so new runs still appear."""
+    import dashboard.app as app_module
+
+    (tmp_path / "artifacts").mkdir()
+    scans = []
+    monkeypatch.setattr(app_module, "discover_runs", lambda roots: scans.append(1) or [])
+    test_client = TestClient(app_module.create_app(tmp_path / "artifacts"))
+    test_client.get("/api/runs")
+    test_client.get("/api/runs")
+    assert len(scans) == 2

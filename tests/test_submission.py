@@ -1,10 +1,36 @@
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _bash() -> str:
+    """A bash that can actually run the repo's scripts.
+
+    On Windows a bare "bash" is the wrong one twice over: CreateProcess (what
+    subprocess.run uses) searches the system directory before PATH, and shutil.which()
+    searches PATH, which outside an interactive Git Bash session does not carry Git's
+    usr/bin. Both land on System32's bash.exe, the WSL launcher -- which on a machine with
+    no distribution installed cannot start anything at all:
+    "execvpe(/bin/bash) failed: No such file or directory". That failed this test for
+    every Windows developer while passing CI, which is the worst way for a check to rot.
+    Git ships the bash these scripts are written for, so find it where git itself lives.
+    """
+    if os.name != "nt":
+        return "bash"
+    git = shutil.which("git")
+    if git:
+        # git.exe sits in bin/ or mingw64/bin/ depending on how PATH found it, so walk up
+        # to the installation root rather than assuming a depth.
+        for folder in Path(git).resolve().parents[:4]:
+            for candidate in (folder / "bin" / "bash.exe", folder / "usr" / "bin" / "bash.exe"):
+                if candidate.is_file():
+                    return str(candidate)
+    return "bash"
 
 
 def test_dockerfile_declares_a_non_root_user():
@@ -56,30 +82,7 @@ def test_verify_clean_clone_script_is_executable_and_well_formed():
     assert tracked, f"{rel} is not tracked by git"
     mode = tracked.split()[0]
     assert mode == "100755", f"git will not check this out executable: mode {mode}"
-    # A bare "bash" here can resolve to WSL's launcher instead of Git's: CreateProcess (what
-    # subprocess.run uses) searches the Windows system directory before PATH for an
-    # unqualified name, and System32 carries WSL's bash.exe -- unrelated to and unfixed by
-    # shutil.which(), which does its own PATH-only search and lands on the same answer
-    # outside an interactive Git Bash session, where Git's usr/bin is never on the system
-    # PATH to begin with. Rather than guess which bash a caller's environment hands back,
-    # use a form both interoperate on: cwd=ROOT plus a repo-relative POSIX path. WSL's
-    # launcher translates the calling process's own working directory into the matching
-    # /mnt/... path before running the command; MSYS resolves the same relative path
-    # natively. Verified against both bashes on this machine.
-    #
-    # One more wrinkle, found the hard way: on a machine where WSL is installed but its
-    # service is not running, that same bash exits 1 with "A connection attempt failed"
-    # -- the same exit code a real syntax error gives. Failing here would then report a
-    # broken script when the script is fine and the machine's WSL is not. So prove bash
-    # can run at all first, and skip when it cannot; a syntax error still fails loudly
-    # wherever a working bash exists, which includes CI.
-    try:
-        usable = subprocess.run(["bash", "-c", "exit 0"], cwd=ROOT, capture_output=True)
-    except OSError:  # no bash on PATH at all
-        pytest.skip("no bash on PATH to check shell syntax with")
-    if usable.returncode != 0:
-        pytest.skip("the bash on PATH cannot run (a stopped WSL service does this)")
-    subprocess.run(["bash", "-n", rel], cwd=ROOT, check=True)
+    subprocess.run([_bash(), "-n", rel], cwd=ROOT, check=True)
 
 
 def test_manifest_matches_the_required_schema():

@@ -1,0 +1,9 @@
+# Build context for dashboard/Dockerfile only (BuildKit reads <Dockerfile>.dockerignore in
+# place of the root .dockerignore, which excludes dashboard/ from the defense image).
+# Allow-list: everything is excluded except what the Dockerfile copies.
+*
+!src/haris/__init__.py
+!src/haris/config.py
+!dashboard/
+dashboard/Dockerfile*
+**/__pycache__/

@@ -1,0 +1,61 @@
+# HARIS and its trace viewer, together, with one command:
+#
+#   docker compose up -d --build
+#
+# then score it from Git Bash (the simulator runs on the host):
+#
+#   HARIS_URL=http://127.0.0.1:8080 scripts/run_eval.sh <kit> public
+#
+# and open the viewer at http://127.0.0.1:8090. Stop with `docker compose down`.
+#
+# The two containers share the HARIS reasoning journal through the kit's artifacts folder
+# on the host: HARIS appends to <kit>/artifacts/haris/journal.jsonl, the simulator writes
+# its traces next to it, and the viewer reads both, read-only. That is what makes runs
+# scored against the container show WHY each decision was made, not only what it was.
+#
+# KIT_DIR is the organizers' kit checkout on the host. It defaults to a sibling folder
+# named Sentinel_Starter_Kit; set it in the environment or in a .env file otherwise.
+#
+# Both ports are published on 127.0.0.1 only: the defense and the viewer are for this
+# machine, and a bare "8080:8080" would put them on the local network.
+#
+# Only one HARIS can hold port 8080. Stop a container from scripts/run_container.sh first
+# (`docker rm -f haris`), or set HARIS_PORT.
+
+services:
+  haris:
+    build: .
+    image: haris:local
+    ports:
+      - "127.0.0.1:${HARIS_PORT:-8080}:8080"
+    environment:
+      HARIS_JOURNAL_PATH: /journal/journal.jsonl
+    volumes:
+      # Writable: the journal. HARIS never fails a decision because this cannot be written.
+      - ${KIT_DIR:-../Sentinel_Starter_Kit}/artifacts/haris:/journal
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    image: haris-dashboard:local
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8090}:8090"
+    environment:
+      # os.pathsep-separated, and inside the container that separator is ':'.
+      HARIS_ARTIFACTS: /artifacts/kit:/artifacts/repo
+      HARIS_JOURNAL_PATH: /artifacts/kit/haris/journal.jsonl
+      # Read every trace once at startup, in the background. Through Docker Desktop's file
+      # sharing the first listing of a large artifacts folder takes minutes; later ones,
+      # under a second. Until it finishes the page says "Loading runs...".
+      HARIS_DASHBOARD_PRELOAD: "1"
+    volumes:
+      # Read-only: the viewer only ever reads. Kit evaluations write under the kit;
+      # scripts/run_redteam.sh writes under this repository.
+      - ${KIT_DIR:-../Sentinel_Starter_Kit}/artifacts:/artifacts/kit:ro
+      - ./artifacts:/artifacts/repo:ro
+    depends_on:
+      haris:
+        condition: service_healthy
+    restart: unless-stopped

@@ -818,7 +818,9 @@ const ENCODING = {
 
 const state = {
   thresholds: { escalate: null, block: null },
-  runs: [], roots: [], rootsMissing: null, listError: null, runsSig: "",
+  // `loaded` stays false until the first run list arrives. Without it the page said "No runs
+  // yet" while a large list (~1 MB for 900+ runs) was still in flight, which read as broken.
+  runs: [], roots: [], rootsMissing: null, listError: null, runsSig: "", loaded: false,
   runId: null, runModified: null, view: null, viewError: null, stepId: null,
   filter: "", quietOpen: false,
 };
@@ -1156,6 +1158,7 @@ async function loadRuns(initial) {
     if (initial || !state.view) renderStage();
     return;
   }
+  state.loaded = true;
   state.runs = body.runs || [];
   state.roots = body.roots || (body.root ? [body.root] : []);
   state.rootsMissing = body.error || null;
@@ -1277,6 +1280,8 @@ function renderRail() {
   $("run-count").textContent = state.runs.length ? (shown === state.runs.length ? String(shown) : `${shown} of ${state.runs.length}`) : "";
   if (state.listError) {
     list.innerHTML = `<li class="calm" style="padding:.8rem .4rem">Trace API unreachable: ${esc(state.listError)}</li>`;
+  } else if (!state.loaded) {
+    list.innerHTML = `<li class="calm" style="padding:.8rem .4rem">Loading runs…</li>`;
   } else if (!state.runs.length) {
     list.innerHTML = `<li class="calm" style="padding:.8rem .4rem">No runs yet.</li>`;
   } else if (!shown) {
@@ -1321,6 +1326,10 @@ function renderStage() {
     return;
   }
   if (!state.view) {
+    if (!state.loaded) {
+      stage.innerHTML = `<div class="empty-stage"><p class="calm">Loading runs…</p></div>`;
+      return;
+    }
     if (!state.runs.length) {
       const roots = state.roots.length ? `<ul>${state.roots.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : "";
       stage.innerHTML = emptyStage(state.rootsMissing ? "No artifacts folder yet" : "No runs yet", `
