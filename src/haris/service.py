@@ -32,6 +32,21 @@ _SAFE_FALLBACK: dict[str, Any] = {
     "metadata": {},
 }
 
+# /v1/guard speaks haris.guard.Verdict, not DefenseDecision -- different field names
+# (risk, not risk_score; rewritten, not rewritten_action) -- so it needs its own fallback
+# shape. Restated here rather than imported from haris.guard for the same reason
+# defense.py restates service.py's _SAFE_FALLBACK: this dict must stay constructible
+# even when haris.guard itself fails to import.
+_GUARD_SAFE_FALLBACK: dict[str, Any] = {
+    "decision": "escalate",
+    "risk": 0.5,
+    "confidence": 0.0,
+    "reason_codes": ["HARIS_INTERNAL_ERROR"],
+    "explanation": "HARIS could not evaluate this action; deferring to a human.",
+    "rewritten": None,
+    "metadata": {},
+}
+
 # What the defense cannot run without: the contract types the simulator speaks, and our
 # own decision path. Importing them is the cheapest honest proof the process is usable.
 CONTRACT = "sentinel-bench (sentinel.core, sentinel.defenses)"
@@ -42,6 +57,13 @@ def _probe() -> None:
     import sentinel.defenses.interface  # noqa: F401
 
     from haris.engine import decide_from_payload  # noqa: F401
+
+    # /v1/guard is a second front door onto the same decision core, with its own import
+    # (sentinel.core.provenance, transitively) and its own degrade-to-escalate fallback.
+    # Without this line a bug isolated to haris.guard would report /healthz "ok" while
+    # that one surface silently escalated everything -- the exact monitoring failure
+    # this probe exists to catch, just scoped to the surface /v1/decision doesn't cover.
+    from haris.guard import HarisGuard  # noqa: F401
 
 
 _PROBE: Callable[[], None] = _probe
@@ -73,3 +95,63 @@ def decision(payload: dict[str, Any]) -> JSONResponse:
         return JSONResponse(decide_from_payload(payload))
     except Exception:  # noqa: BLE001 -- CLOSED fail mode means a raise blocks everything
         return JSONResponse(_SAFE_FALLBACK)
+
+
+@app.post("/v1/guard")
+def guard(payload: dict[str, Any]) -> JSONResponse:
+    """The HTTP twin of `haris.guard.HarisGuard`, for a caller not in Python.
+
+    A sibling of `/v1/decision`, not a replacement: that endpoint's contract (request
+    shape, response shape, `/healthz`) is unchanged. This one speaks OpenAI/Anthropic-
+    shaped tool calls instead of `DefenseRequest`, and returns `Verdict`-shaped JSON
+    (`risk`, `rewritten`) instead of `DefenseDecision`-shaped JSON (`risk_score`,
+    `rewritten_action`) -- deliberately not the same field names, so a caller can never
+    mix the two responses up by accident.
+
+    Imported inside the handler, exactly like `/v1/decision` imports `decide_from_payload`
+    inside its own: a missing contract package must degrade this endpoint, not take down
+    module import of the whole service (service.py's own docstring explains why that
+    matters -- a service that fails to import looks nothing like "healthy", while one
+    that imports fine and escalates everything can look healthy by mistake).
+    """
+    try:
+        from haris.guard import HarisGuard
+
+        body = payload if isinstance(payload, dict) else {}
+        policy = body.get("policy") if isinstance(body.get("policy"), dict) else {}
+
+        instance = HarisGuard(
+            allowed_tools=policy.get("allowed_tools"),
+            consequential_tools=policy.get("consequential_tools"),
+            confirmation_required_tools=policy.get("confirmation_required_tools"),
+            internal_email_domains=policy.get("internal_email_domains"),
+            rules=policy.get("rules"),
+            policy_id=policy.get("policy_id", "haris.guard"),
+        )
+
+        proposed = body.get("proposed")
+        if proposed is None:
+            proposed = body.get("proposed_tool_call")
+
+        verdict = instance.check(
+            goal=str(body.get("goal", "")),
+            proposed=proposed,
+            messages=body.get("messages") or (),
+            sources=body.get("sources") or (),
+            run_id=body.get("run_id"),
+            step_id=body.get("step_id"),
+            confirmations=body.get("confirmations") or (),
+        )
+        return JSONResponse(
+            {
+                "decision": verdict.decision,
+                "risk": verdict.risk,
+                "confidence": verdict.confidence,
+                "reason_codes": verdict.reason_codes,
+                "explanation": verdict.explanation,
+                "rewritten": verdict.rewritten,
+                "metadata": verdict.metadata,
+            }
+        )
+    except Exception:  # noqa: BLE001 -- same CLOSED-fail-mode posture as /v1/decision
+        return JSONResponse(_GUARD_SAFE_FALLBACK)
