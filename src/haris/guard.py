@@ -742,11 +742,16 @@ def _render_rewritten(
 
     Returns `(rendered, escalate_reason)`. `escalate_reason` is non-None when the
     rewrite would substitute a DIFFERENT tool than the one proposed (e.g. `email_send`
-    downgraded to `email_draft`) and that tool was never declared in this guard's
-    `allowed_tools` -- handing back a tool name the caller's agent may not even have is
-    itself a fail-open (I4), so this declines the substitution and asks the caller to
-    escalate instead of silently offering it. A rewrite that keeps the same tool
-    (content/argument redaction only) is never affected by this check.
+    downgraded to `email_draft`), the caller declared at least one tool somewhere in
+    its policy (`declared_tools` is non-empty -- see `HarisGuard.__init__`'s comment
+    for why this checks the UNION of all three policy lists, not `allowed_tools`
+    alone), and the substituted tool is not among them -- handing back a tool name the
+    caller's agent may not even have is itself a fail-open (I4). When the caller
+    declared NO tools at all, there is no vocabulary to check against, so this renders
+    the substitution unconditionally, exactly as `/v1/decision` itself would (matching
+    `rewrite.py`/`planner.py`'s own convention that an empty `allowed_tools` means
+    unrestricted, not empty). A rewrite that keeps the same tool (content/argument
+    redaction only) is never affected by this check either way.
     """
     if shape not in (_Shape.OPENAI, _Shape.ANTHROPIC, _Shape.PLAIN):
         return {**envelope, "content": action.content}, None
@@ -754,6 +759,10 @@ def _render_rewritten(
     sanitized_original = _safe_tool_name(naming.original_tool) if naming.original_tool else None
     if action.tool == sanitized_original:
         out_tool = naming.original_tool or action.tool
+    elif not declared_tools:
+        # Nothing declared anywhere: unrestricted, so there is no caller spelling to
+        # restore to either -- this module's own sanitized form is all there is.
+        out_tool = action.tool
     else:
         declared = declared_tools.get(action.tool)
         if declared is None:
@@ -806,16 +815,31 @@ class HarisGuard:
         policy_id: str = "haris.guard",
         settings: Settings = SETTINGS,
     ) -> None:
-        # Only `allowed_tools` counts as the caller "declaring" a tool exists (I4): a
-        # tool merely named in `consequential_tools`/`confirmation_required_tools` is
-        # marked as needing extra gating, not asserted to be something the caller's
-        # agent actually has. An empty/unset `allowed_tools` -- the common default --
-        # therefore means "nothing declared", so `_render_rewritten` will escalate
-        # rather than offer ANY tool-substituting rewrite until the caller opts in.
+        # A tool counts as "declared" if it is named in ANY of the three policy lists --
+        # allowed_tools, consequential_tools, or confirmation_required_tools -- and
+        # `_render_rewritten` reads the UNION of all three (round 2 review, reconciling
+        # two opposite-pulling round-1 findings). The two readings that were each tried
+        # and rejected first, recorded here so a future edit does not silently reinstate
+        # either:
+        #   - allowed_tools ALONE: matches nothing else in this codebase.
+        #     rewrite.py:163 and planner.py:348 both treat an EMPTY allowed_tools as
+        #     UNRESTRICTED, not "nothing is permitted" -- the guard's default
+        #     configuration (no allowed_tools set at all) would then escalate every
+        #     tool-substituting rewrite the core itself would happily perform, which is
+        #     over-escalation on the guard's own most common configuration.
+        #   - no check at all (the pre-round-1 behaviour): handed a caller a downgraded
+        #     tool name (e.g. email_send -> email_draft) they never declared having,
+        #     which is its own fail-open if the caller's agent has no such tool.
+        # The reconciliation: if the union of all three lists is EMPTY, nothing was
+        # declared at all, so there is no caller vocabulary to check against and this
+        # guard renders a rewrite exactly like /v1/decision would (unrestricted, same
+        # as rewrite.py's own convention). If the union is NON-EMPTY, the caller has
+        # opted into a specific toolset, and a substituted tool must be a member of it
+        # or the rewrite is declined in favour of an escalate.
         declared_tools: dict[str, str] = {}
         sanitized_allowed = _sanitize_tool_list(allowed_tools, declared_tools)
-        sanitized_consequential = _sanitize_tool_list(consequential_tools)
-        sanitized_confirmation = _sanitize_tool_list(confirmation_required_tools)
+        sanitized_consequential = _sanitize_tool_list(consequential_tools, declared_tools)
+        sanitized_confirmation = _sanitize_tool_list(confirmation_required_tools, declared_tools)
         self._declared_tools = declared_tools
 
         self._policy_context: dict[str, Any] = {
