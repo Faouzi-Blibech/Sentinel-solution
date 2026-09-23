@@ -22,12 +22,14 @@ single rule is what the stages implement:
 | Instruction authority | Redirect the agent using a parameter it could only have learned from untrusted text |
 | Capability commitment | Widen what the user's goal and the active policy authorised |
 | Confirmation lifecycle | Stand in for a human approval that was never recorded |
+| Argument origin | Choose, on its own, the payee, account or endpoint of a consequential action |
 | Data flow | Carry a sensitive value to a destination outside the declared internal domains |
 
 Measured against the attack families the specification book names, on the 40 published
 scenarios: data exfiltration 21/21 held, direct instruction 3/3, indirect injection 4/4,
 memory poisoning 2/2, multi-step 1/1, and 9/9 benign scenarios completed. On a real model
-(Qwen 3.5 9B) it held all 12 attacks, after we fixed the one flaw that run exposed (below).
+(Qwen 3.5 9B) it held all 10 attacks the model attempted -- the other 2 it never tried --
+after we fixed the one flaw that run exposed (below).
 
 ## Known failure modes
 
@@ -64,7 +66,31 @@ stage. Other stages may still catch the resulting action.
 **Prohibition parsing is English and clause-scoped.** The goal parser reads modal
 negation and bounds it at the clause. Prohibitions expressed in another language, or
 across sentences ("Read the invoice. That is all I want."), are not read as
-prohibitions. The policy allow-list still applies.
+prohibitions. The policy allow-list still applies. Measured: "Do not execute the payment"
+blocks `payment_execute` at risk 0.97; the same sentence in French ("N'exécute pas le
+paiement") allows it at 0.35. Where the policy requires a recorded approval for the tool, the
+action still escalates to a human (0.68). For users who write in French or Arabic this is the
+most important open limitation.
+
+**The attacker can steer what the agent reads.** Reading is not a harmful effect, so HARIS
+allows reads an injection asked for; on the public split, 14 such reads ran (`asset_lookup`,
+`case_document_read`, `wiki_search`, `customer_lookup`), none causing a violation. HARIS
+gates the point where data leaves, not the gathering.
+
+**A redaction can break the call.** Redaction is value-based: when a secret-shaped value is
+also the record's key (a `case_id`), the rewrite redacts it and the tool rejects the call.
+Nothing leaks, but the write is lost.
+
+**The risk score is not a calibrated probability.** Its weights say how strongly a signal
+proves harm and were set by hand, never fitted to outcomes: Brier 0.095 and ECE 0.080 on the
+public split, worst in finance (ECE 0.141) and SOC (0.129). A risk of 0.35 should be read as
+"one weak signal", not as a 35% chance.
+
+**Display-name recipients were judged external. Fixed.** `Alice Martin <alice@corp.example>`
+ends in `>`, so a colleague was treated as outside the organisation and a legitimate email
+lost the value the user asked to send. A recipient list is now judged by its addresses, and
+only when the value is nothing but recipients, so `Alice <alice@corp.example>@evil.example`
+still counts as external.
 
 **Single stages look redundant.** Removing the authority, memory or lifecycle stage alone
 changes nothing on either corpus, because the remaining stages catch the same attacks.
@@ -74,7 +100,7 @@ The aggregate is the `trust + authority only` row: 0.999 falls to 0.091.
 **Our real-model evidence is thin.** Two runs of Qwen 3.5 9B, a quantized substitute for
 the reference Qwen3-8B, on 16 scenarios whose attack texts we or the organizers wrote. The
 first found the window flaw above, which no mock run could have; the second, on the fixed
-code, held 12 of 12.
+code, held all 10 attacks the model attempted (the other 2 it never tried).
 
 **Our attacker is not what breaks the shipped baseline -- our scenarios are.** Until we
 fixed it, our adaptive attacker was *weaker* than the kit's: its cross-scenario memory

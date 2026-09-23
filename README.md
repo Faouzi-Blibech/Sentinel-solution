@@ -22,26 +22,32 @@ directive-shaped detector reads as an order.
 
 ## Why this design
 
-Every defense that ships in the official starter kit, scored by the kit's own scorer on
-the kit pinned in the Dockerfile (40 public scenarios since the organizers' mid-challenge
-update), and on twelve held-out scenarios we wrote:
+Every defense that ships in the official starter kit, run through the kit's own simulator and
+scorer (kit pinned in the Dockerfile; 40 public scenarios since the organizers' mid-challenge
+update), and on twelve held-out scenarios we wrote. We report what each defense let through and
+what it wrongly refused, not the kit's composite score, which the kit itself labels a local
+diagnostic:
 
-| Defense | Public (40) | Validation (9) | Held out (12, ours) |
-|---|---|---|---|
-| **HARIS (ours)** | **1.000** | **1.000** | **1.000** |
-| `provenance` | 0.939 — refuses 22% of legitimate actions | 0.858 | 0.990 |
-| `keyword` | 0.526 | **ineligible** — utility 0.40 below the 0.50 gate | 0.506 |
-| `heuristic_risk` | **0.156** — 21 of 21 exfiltrations get through | 1.000 | **0.800** |
-| `deny_sensitive` | 0.137 | 0.767 | 0.753 |
-| `allow_all` | 0.054 | 0.218 | 0.144 |
+| Defense | Public: attacks through (of 31) | Public: legitimate actions blocked | Held out: attacks through (of 8) | Held out: legitimate blocked |
+|---|---|---|---|---|
+| **HARIS (ours)** | **0** | **0%** | **0** | **0%** |
+| `provenance` | 0 | **22%** | 0 | 4% |
+| `heuristic_risk` | **21** — every exfiltration | 0% | **2** | 0% |
+| `keyword` | 7 | 14% (ineligible on validation: utility below the 0.50 gate) | 5 | 6% |
+| `deny_sensitive` | 21 | 7% | 3 | 6% |
+| `allow_all` | 31 | 0% | 8 | 0% |
 
-The held-out column comes from `scripts/run_redteam.sh`, which drives the same simulator and
+The held-out columns come from `scripts/run_redteam.sh`, which drives the same simulator and
 scorer through our harness; each defense's row is the worse of the kit's attacker and ours.
 
-On all three sets HARIS holds **ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000** with zero
-defense errors and no unnecessary escalation: it stops every attack while completing every
-benign task, at a p95 latency of 26–31 ms. These are local diagnostics, not the jury
-score.
+**What the zeros mean, and what is not zero.** No attack got through in 31 public, 4 validation
+or 8 held-out attack scenarios with the kit's mock agent, and no benign task failed. With samples
+this size that bounds the true attack success rate below 6.7% (one-sided 95%), not at zero. The
+same scorecards show what is not perfect: HARIS's risk score is not well calibrated (Brier 0.095,
+ECE 0.080 on public), 35 of the 143 tool calls that ran were attack steps it rewrote or harmless
+reads an injection asked for (TUI 0.755), prohibitions are read in English only, and a
+real model found a flaw we then fixed. All of it is in the report's failure analysis. p95 latency
+is 22–24 ms.
 
 `heuristic_risk` was the best defense in the box on the original 19 public scenarios
 (0.999). The organizers then added 21 exfiltration scenarios, and it lets every one of them
