@@ -27,7 +27,7 @@ from haris.planner import assess_plan
 from haris.policy import PolicyView
 from haris.recall import tainted_values
 from haris.rewrite import safer_alternative
-from haris.signals import SENSITIVE_TO_EXTERNAL_SINK, Signal
+from haris.signals import CONSEQUENTIAL_WITHOUT_CONFIRMATION, SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
 
 METADATA_VERSION = "1.0"
@@ -90,9 +90,18 @@ def decide_detailed(
     # CaMeL's argument-origin check: independent of plan/lifecycle, so it must NOT feed
     # `unauthorized` below -- that flag decides whether recalled memory counts as
     # authority, a different question from where a routing argument's value came from.
+    # It DOES need to know whether lifecycle's own gate already fired (I1): stacking an
+    # independent escalate-band signal on top of an already-firing confirmation gate
+    # noisy-ORs past the block threshold, breaking capability's own "escalate, never
+    # block" contract for a case the gate already covers.
     mark = time.perf_counter()
+    confirmation_pending = any(
+        s.code == CONSEQUENTIAL_WITHOUT_CONFIRMATION and s.value > 0.0 for s in lifecycle_signals
+    )
     capability_signals = (
-        assess_argument_origin(request, view, policy) if settings.capability_enabled else []
+        assess_argument_origin(request, view, policy, confirmation_pending)
+        if settings.capability_enabled
+        else []
     )
     signals += capability_signals
     timings["capability"] = round((time.perf_counter() - mark) * 1000, 3)

@@ -184,12 +184,61 @@ def test_confirmed_action_is_no_longer_a_violation():
     assert signal.value == 0.0
 
 
+# --- I1: the escalate contract must survive an active confirmation gate --------------
+
+GATED_PAYMENT_POLICY = {**PAYMENT_POLICY, "confirmation_required_tools": ["payment_send"]}
+
+
+def test_capability_signal_defers_to_an_active_confirmation_gate():
+    """I1: with a confirmation gate active, lifecycle's own CONSEQUENTIAL_WITHOUT_
+    CONFIRMATION (0.50) already brings a human in. Capability firing too noisy-ORs to
+    0.75 and crosses the block threshold, for the exact same reason lifecycle already
+    escalates -- breaking this signal's own "escalate, never block" contract
+    (capability.py:35). The gate already covers it, so capability must stay quiet."""
+    request = _fraud_request(policy_context=GATED_PAYMENT_POLICY)
+    decision, _ = decide_detailed(request, SETTINGS)
+    assert decision.decision.value == "escalate", f"{decision.decision} {decision.reason_codes}"
+    assert UNTRUSTED_ARGUMENT_ORIGIN not in decision.reason_codes
+    assert "CONSEQUENTIAL_WITHOUT_CONFIRMATION" in decision.reason_codes
+    assert 0.40 <= decision.risk_score < 0.70
+
+
+def test_request_confirmation_wrapping_the_fraud_case_is_not_penalized_by_capability():
+    """I1: lifecycle already exempts the agent that ASKS (`asking`). Before this fix,
+    capability judged the wrapper's target_action() (the real payment, IBAN and all)
+    with no knowledge that the action itself was just a confirmation request, so it
+    fired on the ungrounded IBAN anyway and turned lifecycle's deliberate ALLOW into an
+    ESCALATE -- the exact laundering-in-reverse this defense's own provenance rule
+    exists to prevent, just applied to itself."""
+    wrapped = CandidateAction(
+        type=ActionType.REQUEST_CONFIRMATION, confirmation_for=_payment(), content="Approve the payment?"
+    )
+    request = _fraud_request(action=wrapped, policy_context=PAYMENT_POLICY)
+    decision, _ = decide_detailed(request, SETTINGS)
+    assert "UNTRUSTED_ARGUMENT_ORIGIN" not in decision.reason_codes, decision.reason_codes
+    assert decision.decision.value == "allow", f"{decision.decision} {decision.reason_codes}"
+
+
 def test_capability_stage_disabled_drops_the_signal_and_allows_the_fraud_case():
     request = _fraud_request()
     disabled = SETTINGS.without("capability")
     decision, metadata = decide_detailed(request, disabled)
     assert all(s["code"] != UNTRUSTED_ARGUMENT_ORIGIN for s in metadata["signals"])
     assert decision.decision.value == "allow"
+
+
+def test_confirmation_pending_flag_silences_the_signal_directly():
+    """Unit-level check on assess_argument_origin itself, independent of lifecycle's own
+    computation of the flag -- confirmation_pending=True must silence the signal even
+    though every other condition (consequential tool, ungrounded IBAN, no digest match)
+    still says it would otherwise fire."""
+    request = _fraud_request()
+    view = TrustView(request)
+    policy = PolicyView(request.policy_context)
+    loud = assess_argument_origin(request, view, policy, confirmation_pending=False)
+    assert loud[0].value == 1.0
+    quiet = assess_argument_origin(request, view, policy, confirmation_pending=True)
+    assert quiet[0].value == 0.0
 
 
 def test_malformed_argument_values_never_raise():

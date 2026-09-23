@@ -77,21 +77,57 @@ def _least_trusted_source(token: str, spans: list[tuple[str, TrustLevel]]) -> Tr
 
 
 def assess_argument_origin(
-    request: DefenseRequest, view: TrustView, policy: PolicyView
+    request: DefenseRequest,
+    view: TrustView,
+    policy: PolicyView,
+    confirmation_pending: bool = False,
 ) -> list[Signal]:
     """One signal: did untrusted content, alone, supply a routing argument's value?
 
     Judges `target_action()`, the same rule every other stage follows -- a
     confirmation request wraps a real call, and judging the wrapper would let a
-    laundered payee through unexamined.
+    laundered payee through unexamined. Two exemptions keep this signal from breaking
+    its own "escalate, never block" contract (WEIGHT above) against lifecycle.py's
+    confirmation gate:
+
+    1. Asking is judged on the ACTION ITSELF, not target_action() -- lifecycle exempts
+       the agent that asks (`asking` in assess_confirmation), and this signal must not
+       re-penalize the very wrapper that exemption was written for by judging its
+       payload as if it were the real call already taking effect.
+    2. `confirmation_pending` -- true when lifecycle's own CONSEQUENTIAL_WITHOUT_
+       CONFIRMATION already fired for this action -- means a human is already the
+       gate; this signal firing too would noisy-OR an escalate into a block for the
+       identical reason lifecycle already escalates. Nothing is lost by staying quiet:
+       if the human declines, the action stays unconfirmed and lifecycle's own signal
+       keeps it at escalate on every future step.
     """
     try:
+        if request.candidate_action.type is ActionType.REQUEST_CONFIRMATION:
+            return [
+                Signal(
+                    code=UNTRUSTED_ARGUMENT_ORIGIN,
+                    weight=WEIGHT,
+                    value=0.0,
+                    detail="requesting confirmation, not acting",
+                )
+            ]
+
         effective = target_action(request.candidate_action)
         if effective.type is not ActionType.TOOL_CALL or effective.tool is None:
             return [Signal(code=UNTRUSTED_ARGUMENT_ORIGIN, weight=WEIGHT, value=0.0, detail=_QUIET_DETAIL)]
 
         if not _is_consequential(effective.tool, policy):
             return [Signal(code=UNTRUSTED_ARGUMENT_ORIGIN, weight=WEIGHT, value=0.0, detail=_QUIET_DETAIL)]
+
+        if confirmation_pending:
+            return [
+                Signal(
+                    code=UNTRUSTED_ARGUMENT_ORIGIN,
+                    weight=WEIGHT,
+                    value=0.0,
+                    detail="deferred to the confirmation gate",
+                )
+            ]
 
         # A human who actually approved this exact action is now the recorded source
         # of every argument in it, whatever untrusted content also happened to name.
