@@ -35,16 +35,21 @@ DEPTH2_BUDGET_CHARS = 4 * MAX_SCAN_CHARS
 
 # A subset of Unicode TR39 confusables: the letters an agent reaches for when told to
 # "disguise" text by swapping in a look-alike from another script (CyberRAG 5.5), not
-# the full confusables table. Cyrillic lowercase and Greek upper/lowercase only --
-# mapped to the Latin letter each one RENDERS as, which is why Greek nu (lowercase, "v"
-# shaped) and Greek Nu (uppercase, "N" shaped) get different targets despite being the
-# "same" letter.
+# the full confusables table. Cyrillic (lower AND upper case) and Greek upper/lowercase
+# -- mapped to the Latin letter each one RENDERS as, which is why Greek nu (lowercase,
+# "v" shaped) and Greek Nu (uppercase, "N" shaped) get different targets despite being
+# the "same" letter, and why the Cyrillic upper/lowercase pairs each need their own
+# entry: they are unrelated code points, not case variants of one another the way Latin
+# A/a are, so folding the lowercase half alone left every all-caps disguise undetected.
 _CONFUSABLES = str.maketrans(
     {
-        # Cyrillic look-alikes.
+        # Cyrillic look-alikes, lowercase.
         "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o", "р": "p",
         "с": "c", "т": "t", "у": "y", "х": "x", "і": "i", "ј": "j", "ѕ": "s",
         "ԁ": "d", "ԛ": "q", "ԝ": "w",
+        # Cyrillic look-alikes, uppercase -- render as Latin CAPITALS.
+        "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P",
+        "С": "C", "Т": "T", "У": "Y", "Х": "X", "Ѕ": "S", "І": "I", "Ј": "J",
         # Greek look-alikes.
         "Α": "a", "Β": "b", "Ε": "e", "Η": "h", "Ι": "i", "Κ": "k", "Μ": "m", "Ν": "n",
         "Ο": "o", "Ρ": "p", "Τ": "t", "Υ": "y", "Χ": "x", "Ζ": "z",

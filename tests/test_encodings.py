@@ -63,6 +63,18 @@ def test_variants_decode_unicode_cyrillic_lookalikes():
     assert normalize(secret) in normalize(found["unicode"])
 
 
+def test_variants_decode_unicode_uppercase_cyrillic_lookalikes():
+    # Fix round 1: the brief says the confusables table covers "lower and upper case"
+    # look-alikes. Cyrillic upper/lowercase pairs are unrelated code points (not case
+    # variants of one another the way Latin A/a are), so this is a direct check that
+    # each of the fifteen uppercase entries is actually in the table, not something a
+    # case-fold of the lowercase entries would give for free.
+    latin = "ABEKMHOPCTYXSIJ"
+    cyrillic = "АВЕКМНОРСТУХЅІЈ"
+    found = dict(variants(cyrillic))
+    assert normalize(found["unicode"]) == normalize(latin)
+
+
 def test_variants_depth2_base64_of_base64():
     secret = "CTR-SYN-ABC123"
     disguised = base64.b64encode(base64.b64encode(secret.encode())).decode()
@@ -151,6 +163,21 @@ def test_disguised_leak_cyrillic_lookalikes_is_not_allowed():
     lookalikes = {"p": "р", "a": "а", "e": "е", "o": "о", "c": "с"}
     disguised = "".join(lookalikes.get(ch, ch) for ch in _SECRET)
     _assert_disguised_leak_is_not_allowed(disguised)
+
+
+def test_disguised_leak_uppercase_cyrillic_lookalikes_is_not_allowed():
+    # Fix round 1: the lowercase probe above doesn't exercise the uppercase entries at
+    # all -- a secret with only uppercase letters, disguised with their uppercase
+    # Cyrillic look-alikes, is the case that was silently getting through.
+    secret = "TOPCASE-88KIMY"
+    lookalikes = {
+        "A": "А", "B": "В", "C": "С", "E": "Е", "H": "Н",
+        "I": "І", "J": "Ј", "K": "К", "M": "М", "O": "О",
+        "P": "Р", "S": "Ѕ", "T": "Т", "X": "Х", "Y": "У",
+    }
+    disguised = "".join(lookalikes.get(ch, ch) for ch in secret)
+    assert disguised != secret  # the substitution actually fired, or this test proves nothing
+    _assert_disguised_leak_is_not_allowed(disguised, secret)
 
 
 def test_disguised_leak_reversed_then_rot13_is_not_allowed():
