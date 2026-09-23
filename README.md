@@ -92,8 +92,6 @@ the official score multiplies by an `efficiency_factor` derived from it.
 | `scripts/` | Evaluation, red-team, ablation, viewer and clean-clone scripts |
 | `tests/` | The test suite, including the hard-coding audit |
 | `docs/superpowers/specs/` | Design specification and its reasoning |
-| `docs/superpowers/plans/` | Task-by-task implementation plan |
-| `docs/team/` | Workstream briefs |
 | `docs/report/` | Evaluation and security report, evidence tables, Responsible-AI statement |
 
 ## Quick start
@@ -359,4 +357,3 @@ uv run sentinel run --model mock --defense-url http://127.0.0.1:8080 --scenario 
 Each run appears in the viewer within five seconds. The still-open failure shown in the
 video is one click away: *Connect an agent* → *Known failure: display name*.
 
-See `CLAUDE.md` for the full contract, the environment traps, and the command reference.

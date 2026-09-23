@@ -17,4 +17,4 @@ the spec book that disqualifies a decision -- runs by default instead of silentl
 `Sentinel_Starter_Kit/` inside the checkout is covered by `.gitignore`; it is a clone of
 someone else's repository and must never be committed into ours.
 
-Everything in `CLAUDE.md` marked "verified" was read from or executed against this clone.
+Every result in `docs/report/` was produced against this clone.
