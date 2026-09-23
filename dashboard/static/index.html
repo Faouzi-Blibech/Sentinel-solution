@@ -35,6 +35,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 [hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 
 .app { display: flex; height: 100vh; min-height: 620px; overflow: hidden; background: var(--bg); }
 .label { font: 600 11px/1 var(--mono); letter-spacing: .14em; color: var(--faint); text-transform: uppercase; }
@@ -157,6 +158,40 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
           border-left: 1px solid var(--rule); transform: translateX(102%); transition: transform .34s var(--ease); }
 .drawer.open { transform: translateX(0); box-shadow: -24px 0 48px var(--shadow); }
 .dr-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--rule2); }
+
+/* ---------- detached inspector: a window inside the interface ---------- */
+.drawer.floating { position: fixed; transform: none; max-width: none; z-index: 40; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+                   box-shadow: 0 24px 64px var(--shadow), 0 0 0 1px var(--accBg); transition: box-shadow .2s, scale .2s; }
+.drawer.floating:not(.open) { display: none; }
+.drawer.floating.popping { animation: win-pop .32s var(--ease); }
+@keyframes win-pop { from { opacity: 0; scale: .94; } to { opacity: 1; scale: 1; } }
+.drawer.floating.dragging { scale: 1.012; box-shadow: 0 36px 90px var(--shadow), 0 0 0 2px var(--acc); }
+.drawer.floating.resizing { box-shadow: 0 24px 64px var(--shadow), 0 0 0 2px var(--acc); }
+.drawer.floating.animating { transition: left .34s var(--ease), top .34s var(--ease), width .34s var(--ease), height .34s var(--ease), border-radius .34s, box-shadow .2s; }
+.win-bar { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; background: var(--rs); border-bottom: 1px solid var(--rule2);
+           cursor: grab; user-select: none; touch-action: none; flex: none; }
+.drawer.dragging .win-bar { cursor: grabbing; }
+.win-grip { color: var(--faint); font: 700 13px/1 var(--mono); letter-spacing: -1px; }
+.win-hint { flex: 1; min-width: 0; font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win-btns { display: flex; gap: 6px; flex: none; }
+.win-btns .icon-btn { width: 28px; height: 28px; font-size: 13px; }
+.detach-btn { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--acc); background: var(--accBg); color: var(--ink); font: 600 12px var(--sans); cursor: pointer; }
+.detach-btn:hover { background: var(--acc); color: var(--glyph); }
+.rh { position: absolute; z-index: 3; touch-action: none; }
+.rh-n, .rh-s { left: 12px; right: 12px; height: 7px; cursor: ns-resize; }
+.rh-n { top: 0; } .rh-s { bottom: 0; }
+.rh-e, .rh-w { top: 12px; bottom: 12px; width: 7px; cursor: ew-resize; }
+.rh-e { right: 0; } .rh-w { left: 0; }
+.rh-ne, .rh-nw, .rh-se, .rh-sw { width: 16px; height: 16px; }
+.rh-ne { top: 0; right: 0; cursor: nesw-resize; } .rh-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.rh-nw { top: 0; left: 0; cursor: nwse-resize; } .rh-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.rh-se::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 9px; height: 9px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); border-radius: 0 0 3px 0; }
+.rh:hover::before { content: ""; position: absolute; inset: 0; background: var(--accBg); }
+.dock-hint { position: absolute; top: 0; right: 0; bottom: 0; width: var(--drawer-w); max-width: 100%; z-index: 45; pointer-events: none; opacity: 0;
+             display: grid; place-items: center; background: color-mix(in srgb, var(--acc) 16%, var(--bg)); border: 2px dashed var(--acc); border-radius: 14px 0 0 14px;
+             font: 700 13px/1 var(--mono); letter-spacing: .14em; color: var(--accT); transition: opacity .15s; }
+.dock-hint.on { opacity: .96; }
+.drawer.floating.snapping { scale: .97; }
 .dr-top { display: flex; align-items: center; gap: 10px; }
 .step-chip { font: 600 11px/1 var(--mono); letter-spacing: .12em; color: var(--dim); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 7px; }
 .dr-title { font: 650 20px/1.25 var(--sans); text-wrap: pretty; overflow-wrap: anywhere; }
@@ -316,6 +351,7 @@ const S = {
   entries: [], config: null, loadError: null, loaded: false,
   runId: null, run: null, runLoading: false,
   step: 0, drawer: true, tab: "risk", variantsOpen: false, theme: document.documentElement.dataset.theme,
+  float: false, win: null, winPrev: null, dragging: false, pendingRender: false, popping: false, lastSig: null,
   compareDetail: {},
   guard: { preset: "exfil", result: null, busy: false, error: null },
 };
@@ -582,6 +618,11 @@ async function loadRuns(first) {
     S.loadError = String(err && err.message || err);
     S.loaded = true;
   }
+  // Re-rendering on every poll rebuilt the inspector under the reader, reset its scroll,
+  // and would pull a window out from under a drag. Only a change to the runs repaints.
+  const sig = S.entries.length + ":" + S.entries.reduce((m, e) => Math.max(m, e.modified || 0), 0) + ":" + (S.loadError || "");
+  if (!first && sig === S.lastSig) return;
+  S.lastSig = sig;
   render();
 }
 async function openRun(id, opts) {
@@ -712,7 +753,7 @@ function renderHeader() {
         showRun ? chip(S.defense, S.defense === "HARIS" || isVariant(S.defense) ? "var(--accT)" : "var(--faint)") : null)),
     h("div", { class: "hdr-right" },
       S.page === "trace" ? h("div", { class: "keyhints" },
-        [["J K", "step"], ["B", "first intervention"], ["[ ]", "run"], ["/", "search"], ["Esc", "close"]].map(([k, v]) =>
+        [["J K", "step"], ["B", "first intervention"], ["D", "detach"], ["[ ]", "run"], ["/", "search"], ["Esc", "close"]].map(([k, v]) =>
           h("span", null, h("span", { class: "kbd", style: "color:var(--dim);padding:4px 6px" }, k), v))) : null,
       S.page !== "connect" ? h("div", { style: "display:flex;gap:6px" },
         h("button", { class: "btn", title: "Previous run  [", onClick: () => moveRun(-1) }, "‹ Prev run"),
@@ -811,8 +852,9 @@ function renderTrace() {
             h("div", { style: "font-size:12px;color:var(--faint);margin-top:4px" }, Rr.cause))) : null)));
   });
 
-  const canvas = h("div", { class: "canvas" + (S.drawer ? " drawer-open" : "") },
+  const canvas = h("div", { class: "canvas" + (S.drawer && !S.float ? " drawer-open" : "") },
     h("div", { class: "graph-scroll" }, h("div", { class: "graph" }, nodes)),
+    h("div", { class: "dock-hint", id: "dock-hint" }, "⇥  RELEASE TO DOCK"),
     !S.drawer ? h("button", { class: "open-insp", onClick: () => { S.drawer = true; render(); } }, "Open inspector ‹") : null,
     renderDrawer(R, S_));
   return [top, legend, canvas];
@@ -856,16 +898,26 @@ function renderDrawer(R, s) {
   else if (S.tab === "diff") body = tabDiff(s);
   else if (S.tab === "flow") body = tabFlow(s);
   else body = tabRaw(s, ms);
-  return h("div", { class: "drawer" + (S.drawer ? " open" : "") },
+  const floating = S.float;
+  const el = h("div", { class: "drawer" + (S.drawer ? " open" : "") + (floating ? " floating" : "") + (floating && S.popping ? " popping" : "") },
+    floating ? h("div", { class: "win-bar", title: "Drag to move · double-click to maximise", onPointerdown: e => startDrag(e, "move"), onDblclick: toggleMax },
+      h("span", { class: "win-grip" }, "⋮⋮"),
+      h("span", { class: "label", style: "flex:none" }, "Inspector"),
+      h("span", { class: "win-hint", id: "win-hint" }, "drag to move · drop on the right edge to dock"),
+      h("div", { class: "win-btns" },
+        h("button", { class: "icon-btn", title: S.winPrev ? "Restore size" : "Maximise", onClick: toggleMax }, S.winPrev ? "❐" : "□"),
+        h("button", { class: "icon-btn", title: "Dock back to the side (D)", onClick: dock }, "⇥"),
+        h("button", { class: "icon-btn", title: "Close (Esc)", onClick: () => { S.drawer = false; render(); } }, "✕"))) : null,
     h("div", { class: "dr-head" },
       h("div", { class: "dr-top" },
         h("span", { class: "step-chip" }, "STEP " + pad(s.i)),
         chip(D.w, D.c),
         h("span", { style: "font:12px var(--mono);color:var(--faint)" }, s.actor),
         h("div", { style: "margin-left:auto;display:flex;gap:6px" },
+          !floating ? h("button", { class: "detach-btn", title: "Detach into a window you can move and resize (D)", onClick: detach }, "↗ Detach") : null,
           h("button", { class: "icon-btn", title: "Previous step (K)", onClick: () => pickStep(S.step - 1) }, "↑"),
           h("button", { class: "icon-btn", title: "Next step (J)", onClick: () => pickStep(S.step + 1) }, "↓"),
-          h("button", { class: "icon-btn", title: "Close (Esc)", onClick: () => { S.drawer = false; render(); } }, "✕"))),
+          !floating ? h("button", { class: "icon-btn", title: "Close (Esc)", onClick: () => { S.drawer = false; render(); } }, "✕") : null)),
       h("div", { style: "display:flex;align-items:flex-end;gap:16px;margin-top:14px" },
         h("div", { style: "min-width:0;flex:1" },
           h("div", { class: "dr-title" }, s.title),
@@ -876,8 +928,130 @@ function renderDrawer(R, s) {
     h("div", { class: "tabs" }, tabs.map(([id, label, dot]) =>
       h("button", { class: "tab" + (S.tab === id ? " on" : ""), onClick: () => { S.tab = id; render(); } }, label,
         dot ? h("span", { class: "tab-dot", style: { background: D.c } }) : null))),
-    h("div", { class: "dr-body" }, body));
+    h("div", { class: "dr-body" }, body),
+    floating ? ["n", "s", "e", "w", "ne", "nw", "se", "sw"].map(d => h("div", { class: "rh rh-" + d, onPointerdown: e => startDrag(e, d) })) : null);
+  if (floating) applyWin(el, S.win);
+  return el;
 }
+
+// ------------------------------------------------------------------ inspector window
+// The window is fixed to the viewport, so it can sit anywhere in the interface. A drag moves
+// the element directly and never re-renders; render() waits until the pointer is released.
+const MIN_W = 380, MIN_H = 280;
+const dockWidth = () => Math.min(820, Math.max(560, innerWidth * 0.42));
+function clampWin(r) {
+  const w = Math.min(Math.max(r.w, MIN_W), innerWidth - 16), h = Math.min(Math.max(r.h, MIN_H), innerHeight - 16);
+  // Kept wholly on screen: a window dragged half out of view hides its own resize handles.
+  return { w, h, x: Math.min(Math.max(r.x, 0), innerWidth - w), y: Math.min(Math.max(r.y, 0), innerHeight - h) };
+}
+function applyWin(el, r) {
+  el.style.left = r.x + "px"; el.style.top = r.y + "px"; el.style.width = r.w + "px"; el.style.height = r.h + "px";
+}
+function animateWin(el, to, done) {
+  el.classList.add("animating");
+  void el.offsetWidth;
+  applyWin(el, to);
+  setTimeout(() => { el.classList.remove("animating"); if (done) done(); }, 360);
+}
+function saveWin() {
+  try { localStorage.setItem("haris-inspector", JSON.stringify({ float: S.float, win: S.win })); } catch { /* the layout lasts this visit */ }
+}
+function loadWin() {
+  try {
+    const v = JSON.parse(localStorage.getItem("haris-inspector") || "null");
+    if (v && v.win && ["x", "y", "w", "h"].every(k => Number.isFinite(v.win[k]))) { S.win = clampWin(v.win); S.float = !!v.float; }
+  } catch { /* start docked */ }
+}
+function detach() {
+  if (S.float) return;
+  const docked = document.querySelector(".drawer.open");
+  const r = docked ? docked.getBoundingClientRect() : null;
+  const from = r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+  // It lifts off the side it was docked to, a little inset, so the move reads as one object.
+  S.win = clampWin(S.win || (r ? { x: r.left - 72, y: r.top + 28, w: r.width, h: Math.min(r.height - 56, 760) }
+                                   : { x: innerWidth - 700, y: 120, w: 620, h: 640 }));
+  S.float = true; S.drawer = true; S.winPrev = null;
+  if (from) {
+    render();
+    const el = document.querySelector(".drawer.floating");
+    if (el) { applyWin(el, from); animateWin(el, S.win); }
+  } else { S.popping = true; render(); S.popping = false; }
+  saveWin();
+}
+function dock() {
+  if (!S.float) return;
+  const el = document.querySelector(".drawer.floating"), canvas = document.querySelector(".canvas");
+  const finish = () => { S.float = false; S.winPrev = null; saveWin(); render(); };
+  if (!el || !canvas) return finish();
+  const c = canvas.getBoundingClientRect(), w = Math.min(dockWidth(), c.width);
+  el.style.borderRadius = "0";
+  animateWin(el, { x: c.right - w, y: c.top, w, h: c.height }, finish);
+}
+function toggleMax() {
+  const el = document.querySelector(".drawer.floating");
+  if (!el) return;
+  if (S.winPrev) { S.win = S.winPrev; S.winPrev = null; }
+  else {
+    const m = document.querySelector(".main").getBoundingClientRect();
+    S.winPrev = S.win;
+    S.win = { x: m.left + 16, y: m.top + 16, w: m.width - 32, h: m.height - 32 };
+  }
+  animateWin(el, S.win, () => { saveWin(); render(); });
+}
+function startDrag(e, mode) {
+  if (e.button !== 0 || e.target.closest("button")) return;
+  const el = e.currentTarget.closest(".drawer");
+  if (!el) return;
+  e.preventDefault();
+  const p0 = { x: e.clientX, y: e.clientY }, r0 = Object.assign({}, S.win);
+  const hint = document.getElementById("dock-hint"), readout = document.getElementById("win-hint");
+  const moving = mode === "move";
+  let snap = false;
+  S.dragging = true;
+  el.classList.add(moving ? "dragging" : "resizing");
+  document.body.style.userSelect = "none";
+  const onMove = ev => {
+    const dx = ev.clientX - p0.x, dy = ev.clientY - p0.y;
+    const r = Object.assign({}, r0);
+    if (moving) { r.x += dx; r.y += dy; }
+    else {
+      if (mode.includes("e")) r.w = Math.min(r0.w + dx, innerWidth - r0.x);
+      if (mode.includes("s")) r.h = Math.min(r0.h + dy, innerHeight - r0.y);
+      if (mode.includes("w")) { r.w = Math.max(MIN_W, r0.w - dx); r.x = r0.x + r0.w - r.w; }
+      if (mode.includes("n")) { r.h = Math.max(MIN_H, r0.h - dy); r.y = r0.y + r0.h - r.h; }
+    }
+    S.win = clampWin(r);
+    applyWin(el, S.win);
+    if (moving) {
+      snap = ev.clientX > innerWidth - 56;
+      if (hint) hint.classList.toggle("on", snap);
+      el.classList.toggle("snapping", snap);
+    } else if (readout) readout.textContent = Math.round(S.win.w) + " × " + Math.round(S.win.h);
+  };
+  const onUp = () => {
+    removeEventListener("pointermove", onMove);
+    removeEventListener("pointerup", onUp);
+    removeEventListener("pointercancel", onUp);
+    document.body.style.userSelect = "";
+    el.classList.remove("dragging", "resizing", "snapping");
+    if (hint) hint.classList.remove("on");
+    if (readout) readout.textContent = "drag to move · drop on the right edge to dock";
+    S.dragging = false;
+    if (!moving) S.winPrev = null;
+    if (snap) return dock();
+    saveWin();
+    if (S.pendingRender) render();
+  };
+  addEventListener("pointermove", onMove);
+  addEventListener("pointerup", onUp);
+  addEventListener("pointercancel", onUp);
+}
+addEventListener("resize", () => {
+  if (!S.float || !S.win) return;
+  S.win = clampWin(S.win);
+  const el = document.querySelector(".drawer.floating");
+  if (el) applyWin(el, S.win);
+});
 function tabRisk(R, s, D) {
   if (!R.journal && s.dec !== "NONE") return h("div", { class: "card-dashed" },
     h("div", { class: "card-title" }, "No journal for this run"),
@@ -1230,6 +1404,8 @@ function renderPageOnly(resetForm) {
   if (again) again.scrollTop = top;
 }
 function render() {
+  if (S.dragging) { S.pendingRender = true; return; }
+  S.pendingRender = false;
   const focused = document.activeElement && document.activeElement.id === "q";
   const caret = focused ? document.activeElement.selectionStart : null;
   renderSide(); renderHeader(); renderPageOnly();
@@ -1252,12 +1428,14 @@ window.addEventListener("keydown", e => {
   else if (k === "]") moveRun(1);
   else if (k === "[") moveRun(-1);
   else if (k === "Escape") { S.drawer = false; render(); }
+  else if ((k === "d" || k === "D") && S.page === "trace" && S.run) { if (S.float) dock(); else detach(); }
   else if (k === "/") { e.preventDefault(); const q = document.getElementById("q"); if (q) q.focus(); }
   else if (k === "\\") toggleSide();
 });
 
 // ------------------------------------------------------------------ start
 (async function start() {
+  loadWin();
   render();
   const m = /run=([^&]+)/.exec(location.hash);
   if (m) S.runId = null;
