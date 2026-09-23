@@ -12,15 +12,27 @@
   --ink: #e6eaf0; --dim: #a3b0c1; --faint: #8b99ac;
   --acc: #5b9dd9; --accT: #72b0e8; --accBg: rgba(91,157,217,.16); --dot: rgba(255,255,255,.06);
   --good: #5cc79a; --warn: #e8a33d; --bad: #f2707c;
+  --glyph: #0b0b0e; --hatch: #e8935a; --scroll: rgba(255,255,255,.12); --shadow: rgba(0,0,0,.35);
   --ease: cubic-bezier(.2,.8,.2,1);
+  color-scheme: dark;
+}
+/* Light keeps the blue layout; every decision colour is darkened so a word in that colour
+   still reads on white. The JS palette below mirrors these values. */
+html[data-theme="light"] {
+  --bg: #f3f5f9; --sf: #ffffff; --rs: #edf1f7; --rule: #d3dbe6; --rule2: #e3e8f0;
+  --ink: #111827; --dim: #475467; --faint: #667085;
+  --acc: #2f6fb3; --accT: #1f5fa3; --accBg: rgba(47,111,179,.10); --dot: rgba(15,23,42,.09);
+  --good: #1f8a5b; --warn: #a86400; --bad: #c3303f;
+  --glyph: #ffffff; --hatch: #c05f1e; --scroll: rgba(15,23,42,.18); --shadow: rgba(15,23,42,.14);
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); }
 body { color: var(--ink); font: 14px/1.45 var(--sans); }
 button { white-space: nowrap; font-family: inherit; }
-input::placeholder, textarea::placeholder { color: #8c8c9a; }
+input::placeholder, textarea::placeholder { color: var(--faint); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 [hidden] { display: none !important; }
 
@@ -72,7 +84,15 @@ input::placeholder, textarea::placeholder { color: #8c8c9a; }
 .run-row.on { background: var(--rs); border-color: var(--acc); }
 .run-name { font: 500 13px/1.35 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-meta { font-size: 12px; color: var(--faint); }
-.side-foot { padding: 12px; border-top: 1px solid var(--rule2); }
+.side-foot { padding: 12px; border-top: 1px solid var(--rule2); display: flex; flex-direction: column; gap: 10px; }
+.theme-btn { display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--rule); background: var(--rs);
+             color: var(--dim); font: 13px var(--sans); cursor: pointer; text-align: left; white-space: nowrap; }
+.theme-btn:hover { color: var(--ink); border-color: var(--faint); }
+.theme-dot { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 1px solid var(--faint);
+             background: linear-gradient(90deg, #12161d 50%, #f3f5f9 50%); }
+.nav-item.opener { color: var(--accT); border-color: var(--acc); }
+.side.closed .nav-item { width: 44px; overflow: hidden; }
+.side.closed .theme-btn { width: 44px; overflow: hidden; }
 .live { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--dim); padding: 0 4px; }
 .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
 .live.off i { background: var(--bad); }
@@ -102,7 +122,7 @@ input::placeholder, textarea::placeholder { color: #8c8c9a; }
 .tool-chip { font: 12px/1 var(--mono); color: var(--dim); background: var(--rs); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 7px; }
 .legend { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 14px 24px 12px; border-bottom: 1px solid var(--rule2); flex: none; font-size: 13px; color: var(--dim); }
 .legend > span { display: flex; align-items: center; gap: 7px; }
-.hatch { width: 14px; height: 12px; border-radius: 2px; background: repeating-linear-gradient(135deg, #e8935a 0 2px, transparent 2px 4px); border: 1px solid #e8935a; }
+.hatch { width: 14px; height: 12px; border-radius: 2px; background: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 4px); border: 1px solid var(--hatch); }
 .canvas { flex: 1; min-height: 0; position: relative; background-color: var(--bg); background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 22px 22px; }
 .graph-scroll { position: absolute; inset: 0; overflow: auto; transition: padding-right .34s var(--ease); }
 .canvas.drawer-open .graph-scroll { padding-right: 560px; }
@@ -135,7 +155,7 @@ input::placeholder, textarea::placeholder { color: #8c8c9a; }
 /* ---------- inspector ---------- */
 .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 560px; max-width: 100%; display: flex; flex-direction: column; background: var(--sf);
           border-left: 1px solid var(--rule); transform: translateX(102%); transition: transform .34s var(--ease); }
-.drawer.open { transform: translateX(0); box-shadow: -24px 0 48px rgba(0,0,0,.35); }
+.drawer.open { transform: translateX(0); box-shadow: -24px 0 48px var(--shadow); }
 .dr-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--rule2); }
 .dr-top { display: flex; align-items: center; gap: 10px; }
 .step-chip { font: 600 11px/1 var(--mono); letter-spacing: .12em; color: var(--dim); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 7px; }
@@ -152,12 +172,12 @@ input::placeholder, textarea::placeholder { color: #8c8c9a; }
 .rb { position: relative; height: 84px; margin: 0 4px; }
 .rb-tick { position: absolute; top: 0; transform: translateX(-50%); text-align: center; font: 600 11px/1.25 var(--mono); }
 .rb-track { position: absolute; left: 0; right: 0; top: 34px; height: 26px; border-radius: 6px; background: var(--rs); border: 1px solid var(--rule); overflow: hidden; display: flex; }
-.rb-seg { border-right: 2px solid var(--bg); font: 700 12px/26px var(--mono); color: #0b0b0e; padding-left: 6px; overflow: hidden; }
+.rb-seg { border-right: 2px solid var(--bg); font: 700 12px/26px var(--mono); color: var(--glyph); padding-left: 6px; overflow: hidden; }
 .rb-line { position: absolute; top: 30px; height: 34px; width: 2px; }
 .rb-marker { position: absolute; top: 62px; width: 40px; text-align: center; }
 .rb-marker i { display: block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 8px solid var(--ink); margin: 0 auto; }
 .sig-row { display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 12px; padding: 14px; border: 1px solid var(--rule); border-radius: 10px; background: var(--rs); }
-.sig-badge { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; font: 700 12px/1 var(--mono); color: #0b0b0e; }
+.sig-badge { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; font: 700 12px/1 var(--mono); color: var(--glyph); }
 .quiet-row { display: grid; grid-template-columns: minmax(0,210px) minmax(0,1fr); gap: 12px; font-size: 13px; }
 .rung { display: grid; grid-template-columns: minmax(0,200px) minmax(0,1fr); gap: 12px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--rule2); }
 .swatch { width: 16px; height: 16px; flex: none; border-radius: 3px; }
@@ -199,7 +219,7 @@ input::placeholder, textarea::placeholder { color: #8c8c9a; }
 .step-card { display: grid; grid-template-columns: 40px minmax(0,1fr); gap: 16px; padding: 20px; }
 .num { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--acc); background: var(--accBg); display: grid; place-items: center; font: 700 15px var(--mono); color: var(--accT); }
 .code { margin: 12px 0 0; background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; font: 13px/1.6 var(--mono); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
-.status-ok { display: flex; align-items: center; gap: 12px; border: 1px solid rgba(92,199,154,.5); background: rgba(92,199,154,.07); border-radius: 14px; padding: 16px 20px; }
+.status-ok { display: flex; align-items: center; gap: 12px; border: 1px solid color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 7%, transparent); border-radius: 14px; padding: 16px 20px; }
 .console { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .console { grid-template-columns: minmax(0,1fr); } }
 .console .panel { padding: 18px 20px 22px; min-width: 0; }
@@ -237,26 +257,43 @@ textarea.field { resize: vertical; }
  */
 
 // ------------------------------------------------------------------ vocabulary
-const DEC = {
-  ALLOW:    { c: "#5cc79a", g: "✓", w: "ALLOW" },
-  BLOCK:    { c: "#f2707c", g: "✕", w: "BLOCK" },
-  ESCALATE: { c: "#e8a33d", g: "!", w: "ESCALATE" },
-  REWRITE:  { c: "#72b0e8", g: "⇄", w: "REWRITE" },
-  NONE:     { c: "#8c8c9a", g: "",  w: "TASK" },
+// Colours are built in JS because a lot of them carry a hex alpha suffix ("99", "14"),
+// which a CSS variable cannot take. Each theme's palette matches its CSS tokens.
+const PALETTES = {
+  haris: { allow: "#5cc79a", block: "#f2707c", escalate: "#e8a33d", rewrite: "#72b0e8", none: "#8c8c9a", acc: "#5b9dd9",
+           benign: "#a8a8b6", glyph: "#0b0b0e", lv0: "#c9d2de", lv1: "#a3b7cc", lv2: "#8298ae", lv3: "#d4b36e", lv4: "#e8935a" },
+  light: { allow: "#1f8a5b", block: "#c3303f", escalate: "#a86400", rewrite: "#2f6fb3", none: "#6b7280", acc: "#2f6fb3",
+           benign: "#5b6474", glyph: "#ffffff", lv0: "#334155", lv1: "#4a6582", lv2: "#657b93", lv3: "#9a7414", lv4: "#c05f1e" },
 };
-const LV = [
-  { k: "system_policy",        c: "#c9d2de", bg: "#c9d2de" },
-  { k: "authenticated_user",   c: "#a3b7cc", bg: "#a3b7cc" },
-  { k: "trusted_internal",     c: "#8298ae", bg: "#8298ae" },
-  { k: "untrusted_internal",   c: "#d4b36e", bg: "repeating-linear-gradient(135deg,#d4b36e 0 2px,transparent 2px 6px)" },
-  { k: "untrusted_external",   c: "#e8935a", bg: "repeating-linear-gradient(135deg,#e8935a 0 2px,transparent 2px 4px)" },
-  { k: "adversary_controlled", c: "#f2707c", bg: "repeating-linear-gradient(45deg,#f2707c 0 1.5px,transparent 1.5px 4px),repeating-linear-gradient(135deg,#f2707c 0 1.5px,transparent 1.5px 4px)" },
-];
+let P, DEC, LV, KIND, TONE, SEG, STAGE_COLOURS;
+function paint(theme) {
+  P = PALETTES[theme] || PALETTES.haris;
+  DEC = {
+    ALLOW:    { c: P.allow, g: "✓", w: "ALLOW" },
+    BLOCK:    { c: P.block, g: "✕", w: "BLOCK" },
+    ESCALATE: { c: P.escalate, g: "!", w: "ESCALATE" },
+    REWRITE:  { c: P.rewrite, g: "⇄", w: "REWRITE" },
+    NONE:     { c: P.none, g: "",  w: "TASK" },
+  };
+  LV = [
+    { k: "system_policy",        c: P.lv0, bg: P.lv0 },
+    { k: "authenticated_user",   c: P.lv1, bg: P.lv1 },
+    { k: "trusted_internal",     c: P.lv2, bg: P.lv2 },
+    { k: "untrusted_internal",   c: P.lv3, bg: "repeating-linear-gradient(135deg," + P.lv3 + " 0 2px,transparent 2px 6px)" },
+    { k: "untrusted_external",   c: P.lv4, bg: "repeating-linear-gradient(135deg," + P.lv4 + " 0 2px,transparent 2px 4px)" },
+    { k: "adversary_controlled", c: P.block, bg: "repeating-linear-gradient(45deg," + P.block + " 0 1.5px,transparent 1.5px 4px),repeating-linear-gradient(135deg," + P.block + " 0 1.5px,transparent 1.5px 4px)" },
+  ];
+  KIND = { attack: { l: "ATTACK", c: P.block }, hn: { l: "HARD NEGATIVE", c: P.escalate }, benign: { l: "BENIGN", c: P.benign } };
+  TONE = { good: P.allow, warn: P.escalate, bad: P.block };
+  SEG = [P.acc, P.rewrite, P.escalate, P.allow];
+  STAGE_COLOURS = [P.acc, P.rewrite, P.escalate, P.allow, P.lv1];
+  document.documentElement.dataset.theme = theme;
+}
+function savedTheme() {
+  try { return localStorage.getItem("haris-theme") === "light" ? "light" : "haris"; } catch { return "haris"; }
+}
+paint(savedTheme());
 const TRUST_INDEX = Object.fromEntries(LV.map((l, i) => [l.k, i]));
-const KIND = { attack: { l: "ATTACK", c: "#f2707c" }, hn: { l: "HARD NEGATIVE", c: "#e8a33d" }, benign: { l: "BENIGN", c: "#a8a8b6" } };
-const TONE = { good: "#5cc79a", warn: "#e8a33d", bad: "#f2707c" };
-const SEG = ["#5b9dd9", "#72b0e8", "#e8a33d", "#5cc79a"];
-const STAGE_COLOURS = ["#5b9dd9", "#72b0e8", "#e8a33d", "#5cc79a", "#a3b7cc"];
 
 // HARIS reaches the corpus three ways: the kit's own scorer (http_defense) and our red-team
 // ladder against its adaptive and shipped attackers. One scenario can have all three, so a
@@ -278,7 +315,7 @@ const S = {
   sideOpen: true, defense: "HARIS", q: "",
   entries: [], config: null, loadError: null, loaded: false,
   runId: null, run: null, runLoading: false,
-  step: 0, drawer: true, tab: "risk", variantsOpen: false,
+  step: 0, drawer: true, tab: "risk", variantsOpen: false, theme: document.documentElement.dataset.theme,
   compareDetail: {},
   guard: { preset: "exfil", result: null, busy: false, error: null },
 };
@@ -316,10 +353,10 @@ function shape(d, size) {
 }
 function shapeGlyph(d, size, font) {
   const wrap = shape(d, size);
-  wrap.append(h("span", { style: { position: "absolute", inset: "0", display: "grid", placeItems: "center", font: "800 " + font + "px/1 var(--sans)", color: "#0b0b0e" } }, (DEC[d] || DEC.NONE).g));
+  wrap.append(h("span", { style: { position: "absolute", inset: "0", display: "grid", placeItems: "center", font: "800 " + font + "px/1 var(--sans)", color: P.glyph } }, (DEC[d] || DEC.NONE).g));
   return wrap;
 }
-const swatch = (lvl, sensitive) => h("span", { class: "swatch", style: { background: sensitive ? "#e8a33d" : LV[lvl].bg, border: "1px solid " + (sensitive ? "#e8a33d" : LV[lvl].c) } });
+const swatch = (lvl, sensitive) => h("span", { class: "swatch", style: { background: sensitive ? P.escalate : LV[lvl].bg, border: "1px solid " + (sensitive ? P.escalate : LV[lvl].c) } });
 function short(s, n) { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
 
 // ------------------------------------------------------------------ run identity
@@ -604,8 +641,11 @@ function renderSide() {
     h("div", { class: "brand" },
       h("div", { class: "brand-mark" }, h("i")),
       h("div", { class: "fade" }, h("div", { class: "brand-name" }, "HARIS"), h("div", { class: "brand-sub" }, "TRACE VIEWER")),
-      h("button", { class: "icon-btn", style: "margin-left:auto;color:var(--dim)", title: "Toggle sidebar (\\)", onClick: () => { S.sideOpen = !S.sideOpen; render(); } }, S.sideOpen ? "‹" : "›")),
-    h("div", { class: "nav" }, nav.map(([id, label, glyph]) =>
+      h("button", { class: "icon-btn", style: "margin-left:auto;color:var(--dim)", title: "Collapse sidebar (\\)", onClick: toggleSide }, "‹")),
+    h("div", { class: "nav" },
+      !S.sideOpen ? h("div", { class: "nav-item opener", title: "Open sidebar (\\)", onClick: toggleSide },
+        h("span", { class: "nav-glyph" }, "»"), h("span", { class: "fade" }, "Open sidebar")) : null,
+      nav.map(([id, label, glyph]) =>
       h("div", { class: "nav-item" + (S.page === id ? " on" : ""), title: label, onClick: () => { S.page = id; render(); } },
         h("span", { class: "nav-glyph" }, glyph), h("span", { class: "fade" }, label)))),
     h("div", { class: "side-body" },
@@ -615,7 +655,7 @@ function renderSide() {
           h("button", { class: "def-chip" + (S.defense === d.id ? " on" : ""), onClick: () => setDefense(d.id) }, d.label))),
         vars.length ? [
           h("button", { class: "variants-toggle label", onClick: () => { S.variantsOpen = !S.variantsOpen; renderSide(); } },
-            (S.variantsOpen || isVariant(S.defense) ? "▾ " : "▸ ") + "HARIS variants · " + vars.length,
+            (S.variantsOpen ? "▾ " : "▸ ") + "HARIS variants · " + vars.length,
             isVariant(S.defense) && !S.variantsOpen ? h("span", { style: "color:var(--accT);margin-left:8px;text-transform:none;letter-spacing:0" }, S.defense) : null),
           S.variantsOpen ? h("div", { class: "def-row" }, vars.map(id =>
             h("button", { class: "def-chip" + (S.defense === id ? " on" : ""), onClick: () => setDefense(id) }, id))) : null,
@@ -641,9 +681,19 @@ function renderSide() {
         S.loaded && !list.length && S.q ? h("div", { class: "dim", style: "padding:16px 8px;font-size:13px" }, "No runs match “" + S.q + "”. Press Esc to clear.") : null,
         S.loaded && !list.length && !S.q ? h("div", { class: "dim", style: "padding:16px 8px;font-size:13px" }, "No runs for this defense yet.") : null)),
     h("div", { class: "side-foot" },
+      h("button", { class: "theme-btn", title: "Switch to the " + (S.theme === "light" ? "dark" : "light") + " theme", onClick: toggleTheme },
+        h("span", { class: "theme-dot" }), h("span", { class: "fade" }, S.theme === "light" ? "Dark theme" : "Light theme")),
       h("div", { class: "fade" },
         h("div", { class: "live" + (S.loadError ? " off" : "") }, h("i"),
           S.loadError ? "Viewer cannot read runs" : "Watching " + ((S.roots || []).length || "?") + " folders · every 5 s")))));
+}
+
+function toggleSide() { S.sideOpen = !S.sideOpen; render(); }
+function toggleTheme() {
+  S.theme = S.theme === "light" ? "haris" : "light";
+  paint(S.theme);
+  try { localStorage.setItem("haris-theme", S.theme); } catch { /* private window: the choice lasts this visit */ }
+  render();
 }
 
 // ------------------------------------------------------------------ header
@@ -737,7 +787,7 @@ function renderTrace() {
     return h("div", { class: "step-wrap" },
       i > 0 ? h("div", { class: "connector" }) : null,
       h("div", { class: "step-row" },
-        h("div", { class: "ann-l-cell" }, L ? h("div", { class: "ann-l", style: { borderColor: L.sens ? "#e8a33d99" : lvl.c + "99" } },
+        h("div", { class: "ann-l-cell" }, L ? h("div", { class: "ann-l", style: { borderColor: L.sens ? (P.escalate + "99") : lvl.c + "99" } },
           swatch(L.lvl, L.sens),
           h("div", { style: "min-width:0" },
             h("div", { style: "font:600 11px/1.2 var(--mono);letter-spacing:.1em;color:var(--dim)" }, L.sens ? "SENSITIVE · " + lvl.k : lvl.k),
@@ -749,7 +799,7 @@ function renderTrace() {
           h("div", { style: "min-width:0" },
             h("div", { style: "display:flex;gap:8px;align-items:baseline;min-width:0" }, h("span", { class: "node-word", style: { color: D.c } }, D.w), h("span", { class: "node-tool" }, s.tool)),
             h("div", { class: "node-title" }, s.title),
-            (Rr || L) ? h("div", { class: "node-inline", style: { color: Rr ? D.c : (L.sens ? "#e8a33d" : lvl.c) } }, Rr ? Rr.label + " · " + Rr.text : "↳ " + L.text) : null),
+            (Rr || L) ? h("div", { class: "node-inline", style: { color: Rr ? D.c : (L.sens ? P.escalate : lvl.c) } }, Rr ? Rr.label + " · " + Rr.text : "↳ " + L.text) : null),
           h("div", { class: "node-risk" },
             h("span", { style: "font:600 13px/1 var(--mono)" }, s.risk == null ? "—" : fmt(s.risk)),
             h("div", { class: "riskbar" }, h("i", { style: { width: ((s.risk || 0) * 100) + "%", background: D.c } })))),
@@ -776,12 +826,12 @@ function riskBreakdown(fired, risk, decWord) {
     h("div", { style: "font-size:15px;margin-bottom:22px;text-wrap:pretty" },
       fired.length + (fired.length === 1 ? " signal" : " signals") + " fired → risk ", h("b", null, fmt(risk)), " ", h("span", { class: "dim" }, sentence)),
     h("div", { class: "rb" },
-      h("div", { class: "rb-tick", style: "left:40%;color:#e8a33d" }, "0.40", h("br"), "ESCALATE"),
-      h("div", { class: "rb-tick", style: "left:70%;color:#f2707c" }, "0.70", h("br"), "BLOCK / REWRITE"),
+      h("div", { class: "rb-tick", style: "left:40%;color:" + P.escalate }, "0.40", h("br"), "ESCALATE"),
+      h("div", { class: "rb-tick", style: "left:70%;color:" + P.block }, "0.70", h("br"), "BLOCK / REWRITE"),
       h("div", { class: "rb-track" }, fired.map((x, i) =>
         h("div", { class: "rb-seg", style: { width: (sum ? x.c / sum * (risk || 0) * 100 : 0) + "%", background: SEG[i % 4], opacity: String(1 - i * 0.12) } }, String(i + 1)))),
-      h("div", { class: "rb-line", style: "left:40%;background:#e8a33d" }),
-      h("div", { class: "rb-line", style: "left:70%;background:#f2707c" }),
+      h("div", { class: "rb-line", style: "left:40%;background:" + P.escalate }),
+      h("div", { class: "rb-line", style: "left:70%;background:" + P.block }),
       h("div", { class: "rb-marker", style: { left: "calc(" + ((risk || 0) * 100) + "% - 20px)" } }, h("i"), h("div", { style: "font:700 12px/1 var(--mono);margin-top:3px" }, fmt(risk)))),
     h("div", { style: "display:flex;flex-direction:column;gap:10px;margin-top:18px" }, fired.map((x, i) =>
       h("div", { class: "sig-row" },
@@ -861,7 +911,7 @@ function tabTrust(R, s) {
         h("div", { class: "rung", style: items.length ? { borderColor: l.c + "66", background: "var(--rs)" } : null },
           h("div", { style: "display:flex;align-items:center;gap:10px;min-width:0" }, swatch(i, false), h("span", { style: "font:12px var(--mono);color:var(--dim);overflow-wrap:anywhere" }, l.k)),
           h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;min-width:0" },
-            items.length ? items.map(x => h("span", { class: "src-chip", style: { borderColor: freshIds.has(x.id) ? "var(--acc)" : l.c + "88", background: i > 2 ? "var(--bg)" : "var(--sf)", color: x.tag ? "#e8a33d" : "var(--ink)" } },
+            items.length ? items.map(x => h("span", { class: "src-chip", style: { borderColor: freshIds.has(x.id) ? "var(--acc)" : l.c + "88", background: i > 2 ? "var(--bg)" : "var(--sf)", color: x.tag ? P.escalate : "var(--ink)" } },
               x.name, x.tag ? h("span", { style: "font:700 10px/1 var(--mono);letter-spacing:.08em;border:1px solid currentColor;border-radius:4px;padding:3px 4px" }, x.tag) : null))
               : h("span", { class: "faint", style: "font-size:12px" }, "nothing at this level"))),
         i === 2 ? h("div", { class: "boundary" }, h("b", null, "TRUST BOUNDARY"), h("i"), h("span", { class: "dim", style: "font-size:12px" }, "above can authorize ↑ · below is evidence only ↓")) : null,
@@ -878,20 +928,20 @@ function tabDiff(s) {
   return [
     h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:13px;color:var(--dim);gap:10px;flex-wrap:wrap" },
       h("span", null, same), h("span", { style: "font:600 12px var(--mono);color:var(--ink);background:var(--rs);border:1px solid var(--rule);border-radius:6px;padding:5px 8px" }, d.field)),
-    h("div", { class: "diff-card", style: "border-color:rgba(242,112,124,.55);background:rgba(242,112,124,.06)" },
-      h("div", { style: "font:700 11px/1 var(--mono);letter-spacing:.14em;color:#f2707c" }, "BEFORE · WHAT THE AGENT PROPOSED"),
-      h("div", { class: "diff-text" }, d.pre, h("span", { style: "background:rgba(242,112,124,.22);color:#f2707c;text-decoration:line-through;padding:1px 3px;border-radius:3px" }, d.hit), d.post)),
-    h("div", { style: "display:flex;align-items:center;gap:10px;justify-content:center;padding:10px 0;font:700 11px/1 var(--mono);letter-spacing:.14em;color:#72b0e8" }, h("span", { style: "font-size:18px" }, "↓"), "SWAPPED IN BEFORE IT RAN"),
-    h("div", { class: "diff-card", style: "border-color:rgba(114,176,232,.6);background:rgba(114,176,232,.07)" },
-      h("div", { style: "font:700 11px/1 var(--mono);letter-spacing:.14em;color:#72b0e8" }, "AFTER · WHAT ACTUALLY RAN"),
-      h("div", { class: "diff-text" }, d.pre, h("span", { style: "background:rgba(114,176,232,.2);color:#72b0e8;border:1px solid #72b0e8;padding:0 4px;border-radius:3px" }, d.rep), d.post)),
+    h("div", { class: "diff-card", style: "border-color:" + P.block + "8c" + ";background:" + P.block + "0f" },
+      h("div", { style: "font:700 11px/1 var(--mono);letter-spacing:.14em;color:" + P.block }, "BEFORE · WHAT THE AGENT PROPOSED"),
+      h("div", { class: "diff-text" }, d.pre, h("span", { style: "background:" + P.block + "38" + ";color:" + P.block + ";text-decoration:line-through;padding:1px 3px;border-radius:3px" }, d.hit), d.post)),
+    h("div", { style: "display:flex;align-items:center;gap:10px;justify-content:center;padding:10px 0;font:700 11px/1 var(--mono);letter-spacing:.14em;color:" + P.rewrite }, h("span", { style: "font-size:18px" }, "↓"), "SWAPPED IN BEFORE IT RAN"),
+    h("div", { class: "diff-card", style: "border-color:" + P.rewrite + "99" + ";background:" + P.rewrite + "12" },
+      h("div", { style: "font:700 11px/1 var(--mono);letter-spacing:.14em;color:" + P.rewrite }, "AFTER · WHAT ACTUALLY RAN"),
+      h("div", { class: "diff-text" }, d.pre, h("span", { style: "background:" + P.rewrite + "33" + ";color:" + P.rewrite + ";border:1px solid " + P.rewrite + ";padding:0 4px;border-radius:3px" }, d.rep), d.post)),
     h("div", { class: "dim", style: "font-size:13px;margin-top:14px" }, "Everything else in the call is unchanged. Rewriting keeps the task alive — a block would have lost the whole action."),
   ];
 }
 function tabFlow(s) {
   const f = s.flow;
   if (!f) return h("div", { class: "card-dashed" }, "No outbound payload — this step only reads or replies, so nothing can leave the system here.");
-  const cut = { blocked: ["✕  STOPPED HERE — nothing sent", "#f2707c"], rewritten: ["⇄  REDACTED BEFORE IT LEFT", "#72b0e8"], held: ["!  HELD FOR HUMAN CONFIRMATION", "#e8a33d"], sent: ["↓  delivered", "#8c8c9a"] }[f.out];
+  const cut = { blocked: ["✕  STOPPED HERE — nothing sent", P.block], rewritten: ["⇄  REDACTED BEFORE IT LEFT", P.rewrite], held: ["!  HELD FOR HUMAN CONFIRMATION", P.escalate], sent: ["↓  delivered", P.none] }[f.out];
   const went = f.out === "sent";
   const outcome = { blocked: "Never reached. The call was dropped before it ran.", rewritten: "Reached — with the sensitive value replaced by [redacted].", held: "Waiting — paused until a human confirms.", sent: f.ext ? "Reached. The payload left the system." : "Reached an internal destination." }[f.out];
   return h("div", { style: "display:flex;flex-direction:column;align-items:stretch" },
@@ -899,15 +949,15 @@ function tabFlow(s) {
       h("div", { class: "label" }, "Source value"),
       h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.val),
       h("div", { style: "display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--dim);flex-wrap:wrap" }, "from " + f.from,
-        f.sens && f.sens !== "—" ? h("span", { style: "font:700 10px/1 var(--mono);letter-spacing:.08em;color:#e8a33d;border:1px solid #e8a33d;border-radius:4px;padding:3px 5px" }, f.sens) : null,
+        f.sens && f.sens !== "—" ? h("span", { style: "font:700 10px/1 var(--mono);letter-spacing:.08em;color:" + P.escalate + ";border:1px solid " + P.escalate + ";border-radius:4px;padding:3px 5px" }, f.sens) : null,
         f.recalled ? h("span", { class: "faint" }, "· " + f.recalled + " remembered from earlier in the run") : null)),
     h("div", { class: "flow-stem" }),
-    h("div", { class: "pill" }, "encoding · ", h("b", { style: { color: f.enc === "plain text" || f.enc === "none" ? "var(--ink)" : "#e8a33d" } }, f.enc)),
+    h("div", { class: "pill" }, "encoding · ", h("b", { style: { color: f.enc === "plain text" || f.enc === "none" ? "var(--ink)" : P.escalate } }, f.enc)),
     h("div", { class: "flow-stem", style: "height:16px" }),
     h("div", { style: { textAlign: "center", font: "700 12px/1 var(--mono)", letterSpacing: ".1em", color: cut[1], padding: "10px", borderTop: "2px dashed " + cut[1], borderBottom: went ? "0" : "2px dashed " + cut[1] } }, cut[0]),
     h("div", { style: { width: "2px", height: "20px", margin: "0 auto", background: went ? "var(--rule)" : "transparent", borderLeft: went ? "0" : "2px dotted var(--rule)" } }),
-    h("div", { style: { border: "1px solid " + (f.ext ? "#f2707c99" : "var(--rule)"), background: f.ext ? "rgba(242,112,124,.07)" : "var(--rs)", borderRadius: "12px", padding: "14px 16px", opacity: went ? "1" : ".6" } },
-      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" }, h("span", { class: "label" }, "Destination · via " + f.via), chip(f.ext ? "EXTERNAL" : "INTERNAL", f.ext ? "#f2707c" : "#8c8c9a")),
+    h("div", { style: { border: "1px solid " + (f.ext ? (P.block + "99") : "var(--rule)"), background: f.ext ? (P.block + "12") : "var(--rs)", borderRadius: "12px", padding: "14px 16px", opacity: went ? "1" : ".6" } },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" }, h("span", { class: "label" }, "Destination · via " + f.via), chip(f.ext ? "EXTERNAL" : "INTERNAL", f.ext ? P.block : P.none)),
       h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.dest),
       h("div", { class: "dim", style: "font-size:13px;margin-top:6px" }, outcome)));
 }
@@ -1022,17 +1072,17 @@ function renderCompare() {
       h("div", { style: "display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:18px" },
         h("div", { style: "font:650 18px var(--sans)" }, "Across the whole suite"),
         h("div", { style: "display:flex;gap:16px;font-size:13px;color:var(--dim);flex-wrap:wrap" },
-          h("span", { style: "display:flex;gap:6px;align-items:center" }, h("span", { style: "width:12px;height:12px;border-radius:3px;background:#5cc79a" }), "attacks stopped (higher is better)"),
-          h("span", { style: "display:flex;gap:6px;align-items:center" }, h("span", { style: "width:12px;height:12px;border-radius:3px;background:#f2707c" }), "user's task not completed (lower is better)"))),
+          h("span", { style: "display:flex;gap:6px;align-items:center" }, h("span", { style: "width:12px;height:12px;border-radius:3px;background:" + P.allow }), "attacks stopped (higher is better)"),
+          h("span", { style: "display:flex;gap:6px;align-items:center" }, h("span", { style: "width:12px;height:12px;border-radius:3px;background:" + P.block }), "user's task not completed (lower is better)"))),
       h("div", { style: "display:flex;flex-direction:column;gap:14px" }, suite.map(({ d, st }) =>
         h("div", { class: "suite-row" },
           h("span", { style: { font: (d.ours ? "700 " : "400 ") + "14px var(--mono)", color: d.ours ? "var(--ink)" : "var(--dim)" } }, d.label),
           h("div", { style: "display:flex;flex-direction:column;gap:5px" },
             h("div", { style: "display:flex;align-items:center;gap:10px" },
-              h("div", { class: "bar-track", style: "height:12px;border-radius:4px" }, h("div", { style: { width: ((st.stop || 0) * 100) + "%", height: "100%", background: "#5cc79a", opacity: d.ours ? "1" : ".55", transition: "width .5s var(--ease)" } })),
+              h("div", { class: "bar-track", style: "height:12px;border-radius:4px" }, h("div", { style: { width: ((st.stop || 0) * 100) + "%", height: "100%", background: P.allow, opacity: d.ours ? "1" : ".55", transition: "width .5s var(--ease)" } })),
               h("span", { style: "font:600 13px var(--mono);width:46px;text-align:right" }, pct(st.stop))),
             h("div", { style: "display:flex;align-items:center;gap:10px" },
-              h("div", { class: "bar-track", style: "height:6px;border-radius:3px" }, h("div", { style: { width: ((st.failed || 0) * 100) + "%", height: "100%", background: "#f2707c", opacity: d.ours ? "1" : ".6" } })),
+              h("div", { class: "bar-track", style: "height:6px;border-radius:3px" }, h("div", { style: { width: ((st.failed || 0) * 100) + "%", height: "100%", background: P.block, opacity: d.ours ? "1" : ".6" } })),
               h("span", { style: "font:12px var(--mono);color:var(--dim);width:46px;text-align:right" }, pct(st.failed))))))),
       h("div", { class: "faint", style: "font-size:12px;margin-top:16px" }, "Computed from the runs on disk, one per scenario per defense. HARIS counts its kit-scored run where there is one."))));
 }
@@ -1097,7 +1147,7 @@ async function judge() {
 }
 function guardResult() {
   const v = S.guard.result;
-  if (S.guard.error) return h("div", { class: "card-dashed", style: "color:#f2707c;border-color:#f2707c88" }, S.guard.error);
+  if (S.guard.error) return h("div", { class: "card-dashed", style: "color:" + P.block + ";border-color:" + P.block + "88" }, S.guard.error);
   if (!v) return h("div", { class: "card-dashed" }, "Pick a preset, then press ", h("b", null, "Judge this action"), ". HARIS answers allow, block, escalate or rewrite — with the reason.");
   const d = String(v.decision || "").toUpperCase(), D = DEC[d] || DEC.NONE;
   const fired = ((v.metadata || {}).signals || []).map(x => ({ code: x.code, w: +x.weight || 0, v: +x.value || 0, c: x.contribution != null ? +x.contribution : (+x.weight || 0) * (+x.value || 0), why: x.detail || "" }))
@@ -1126,7 +1176,7 @@ function renderConnect() {
       "POST http://127.0.0.1:8080/v1/guard\n{ \"goal\": \"…\", \"proposed\": <tool call>, \"sources\": [{\"text\": \"…\", \"trust\": \"untrusted_external\"}], \"run_id\": \"…\" }\n\n# in Python\nfrom haris.guard import HarisGuard\nverdict = HarisGuard().check(goal=goal, proposed=response.choices[0].message, sources=sources)"),
     card("3", "Run a scenario and watch it here", "Traces land in the watched folders and appear in the sidebar within five seconds.",
       "scripts/run_eval.sh ./Sentinel_Starter_Kit public\nscripts/run_redteam.sh ./Sentinel_Starter_Kit"),
-    h("div", { class: "status-ok" }, h("span", { style: "width:10px;height:10px;border-radius:50%;background:#5cc79a;flex:none" }),
+    h("div", { class: "status-ok" }, h("span", { style: "width:10px;height:10px;border-radius:50%;background:" + P.allow + ";flex:none" }),
       h("div", null, h("div", { style: "font-weight:650" }, "Viewer live — try it below"),
         h("div", { class: "dim", style: "font-size:13px" }, "Watching " + ((S.roots || []).length || "?") + " run folders · refreshes every 5 s · " + S.entries.length + " runs loaded · the console calls the same decision core in this process"))),
     h("div", { class: "console" },
@@ -1203,7 +1253,7 @@ window.addEventListener("keydown", e => {
   else if (k === "[") moveRun(-1);
   else if (k === "Escape") { S.drawer = false; render(); }
   else if (k === "/") { e.preventDefault(); const q = document.getElementById("q"); if (q) q.focus(); }
-  else if (k === "\\") { S.sideOpen = !S.sideOpen; render(); }
+  else if (k === "\\") toggleSide();
 });
 
 // ------------------------------------------------------------------ start
