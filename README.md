@@ -190,7 +190,8 @@ Open the viewer at <http://127.0.0.1:8090>. The two containers share the HARIS r
 journal through `<kit>/artifacts/haris/`, so runs scored against the container show *why*
 each decision was made, not only what it was. `KIT_DIR` points at the kit and defaults to a
 sibling folder named `Sentinel_Starter_Kit`; both ports are published on `127.0.0.1` only.
-The viewer image holds only the viewer, not the kit or the decision code.
+The viewer image also carries the decision code and the kit's contract types, because its
+*Connect an agent* console runs the guard in-process.
 
 Through Docker Desktop's file sharing, the viewer's first listing of a large artifacts
 folder takes about two minutes, since every trace is read once. The container starts it in
