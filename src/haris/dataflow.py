@@ -34,6 +34,38 @@ ENCODING_WEIGHT = 0.20
 _EMAIL = re.compile(r"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _URL = re.compile(r"https?://([A-Za-z0-9.\-]+)")
 _DESTINATION_KEYS = ("to", "recipient", "destination", "url", "endpoint", "address", "email")
+# One recipient written the way mail clients write it: "Display Name <address>". The name
+# may not contain "<", ">" or "@", and nothing may follow the closing bracket. Anchored,
+# so even an unanchored search tries one start, not every start -- unanchored, a long run
+# with no "<" was rescanned from each position (tests/test_redos.py caught it). `[^<>\s]+`
+# cannot overlap the `\s*` around it, so the address part is scanned once too.
+_DISPLAY_NAME = re.compile(r"\A[^<>@]*<\s*([^<>\s]+)\s*>\s*\Z")
+_RECIPIENT_SEPARATOR = re.compile(r"[,;]")
+
+
+def _recipients(value: str) -> list[str] | None:
+    """The addresses a routing value names, when the value is only a list of recipients.
+
+    `Alice Martin <alice@corp.example>` was judged by its raw text, which ends in ">", so a
+    colleague written the way every mail client writes her was an external sink and a
+    legitimate email lost the value the user asked to send. Each part must be a bare
+    address or `Name <address>`; if any part is anything else the answer is None and the
+    caller judges the raw value exactly as before. So an address is never read more
+    leniently than it was: `Alice <alice@corp.example>@evil.example` is not a recipient
+    list, and stays external. A display name quoted around a comma ("Martin, Alice")
+    splits into parts that are not recipients, and falls back the same safe way.
+    """
+    addresses: list[str] = []
+    for part in _RECIPIENT_SEPARATOR.split(value):
+        part = part.strip()
+        if not part:
+            continue
+        named = _DISPLAY_NAME.fullmatch(part)
+        address = named.group(1) if named else part
+        if not _EMAIL.fullmatch(address):
+            return None
+        addresses.append(address)
+    return addresses or None
 
 
 def _destinations(arguments: dict[str, Any]) -> list[str]:
@@ -57,6 +89,10 @@ def _destinations(arguments: dict[str, Any]) -> list[str]:
         if not isinstance(value, str):
             continue
         if key.lower() in _DESTINATION_KEYS:
+            recipients = _recipients(value)
+            if recipients is not None:
+                found.extend(recipients)
+                continue
             found.append(value)
         found.extend(_EMAIL.findall(value))
         found.extend(_URL.findall(value))
