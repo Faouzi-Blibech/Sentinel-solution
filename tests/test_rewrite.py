@@ -101,6 +101,23 @@ def test_no_rewrite_when_the_leak_cannot_be_removed():
     assert safer_alternative(action, POLICY, tainted=TAINT, reasons=["SENSITIVE_TO_EXTERNAL_SINK"]) is None
 
 
+def test_an_ungrounded_routing_argument_is_never_rewritten_around():
+    """T1: a tool-name downgrade (payment_send -> payment_draft) copies every argument
+    across unchanged -- there is no redaction concept for "iban", so
+    UNTRUSTED_ARGUMENT_ORIGIN firing means the SAME attacker-supplied IBAN would ride
+    along into the "safer" tool. That is not a mitigation, it is laundering the exact
+    argument capability.py flagged into a differently-named call. Same pattern as
+    GOAL_PROHIBITION: this reason code alone means no rewrite exists, full stop.
+    """
+    action = CandidateAction(
+        type=ActionType.TOOL_CALL,
+        tool="payment_send",
+        arguments={"iban": "DE89370400440532013000", "amount": 1250},
+    )
+    policy = PolicyView({"allowed_tools": ["payment_send", "payment_draft"]})
+    assert safer_alternative(action, policy, reasons=["UNTRUSTED_ARGUMENT_ORIGIN"]) is None
+
+
 def test_an_explicit_user_prohibition_is_never_rewritten():
     """Substituting a neighbouring action when the user forbade this one is disobedience,
     not mitigation. A prohibition must reach BLOCK."""
