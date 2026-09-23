@@ -15,7 +15,7 @@ from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.config import SETTINGS, Settings
-from haris.encodings import normalize, variants
+from haris.encodings import fragment_hits, fragment_window_map, normalize, variants
 from haris.lifecycle import target_action
 from haris.policy import PolicyView
 from haris.recall import cached_extract, tainted_values
@@ -103,13 +103,37 @@ def assess_dataflow(
     hits: list[tuple[str, str]] = []
     plain_hits: set[str] = set()
     if ordered and payload:
+        # Built once for the whole call, not per variant (CyberRAG 5.5 split
+        # exfiltration): a fragment of a long, secret-shaped needle counts as a hit of
+        # that needle too, via haris.encodings' own window-matching helper -- the same
+        # one reveals_any calls, so detection and the rewrite's leak check cannot
+        # disagree about what a fragment reveals the way they once disagreed about
+        # encodings.
+        window_map = fragment_window_map(ordered)
         for encoding, decoded in variants(payload):
             haystack = normalize(decoded)
+            full_hits_here: set[str] = set()
             for needle in ordered:
                 if needle in haystack:
                     hits.append((encoding, needle))
+                    full_hits_here.add(needle)
                     if encoding == "plain":
                         plain_hits.add(needle)
+            # A full-needle hit already found in this exact variant always wins over a
+            # fragment hit of the same needle (report the full hit, never downgrade it).
+            for needle in sorted(fragment_hits(haystack, window_map) - full_hits_here):
+                if encoding == "plain":
+                    # A fragment surfacing in the plain text is still a leak, but it is
+                    # not an obfuscation -- "fragment" is its own encoding name so R1's
+                    # rule (no ENCODED_PAYLOAD_DETECTED for it) can key off it below,
+                    # the same way "plain" itself is excluded.
+                    hits.append(("fragment", needle))
+                    plain_hits.add(needle)
+                else:
+                    # Found only inside a real decoding (e.g. reversed, base64): keep
+                    # that variant's name, so it is obfuscated exactly like a full hit
+                    # in that encoding would be.
+                    hits.append((encoding, needle))
 
     # Identifiers the authenticated user named are theirs to work with. Restricted records
     # carry hostnames and asset ids alongside the secret, and echoing the host the user
@@ -126,11 +150,21 @@ def assess_dataflow(
     leaking = bool(external_hits) or copied_restricted
     # Encoded only if a needle surfaced in a decoding and NOT in the plain text: the url
     # variant of ordinary text is the text itself and would otherwise always "match".
-    obfuscated_hits = sorted({needle for encoding, needle in hits if encoding != "plain"} - plain_hits)
+    # "fragment" (a plain-text fragment hit, R1) is excluded exactly like "plain" is: a
+    # fragment sitting in the clear is a leak, but reading ten characters of prose is not
+    # an obfuscation, so it must not trip ENCODED_PAYLOAD_DETECTED.
+    obfuscated_hits = sorted(
+        {needle for encoding, needle in hits if encoding not in ("plain", "fragment")} - plain_hits
+    )
     obfuscated = leaking and bool(obfuscated_hits)
 
     hit_value = (restricted_hits or obfuscated_hits or sorted(plain_hits) or [""])[0]
-    hit_encoding = next((e for e, n in hits if n == hit_value and (e != "plain") == (n in obfuscated_hits)), "")
+    if hit_value and hit_value in obfuscated_hits:
+        hit_encoding = next((e for e, n in hits if n == hit_value and e not in ("plain", "fragment")), "")
+    elif hit_value:
+        hit_encoding = next((e for e, n in hits if n == hit_value and e in ("plain", "fragment")), "")
+    else:
+        hit_encoding = ""
 
     metadata: dict[str, Any] = {
         "destination_class": destination_class,

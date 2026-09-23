@@ -192,3 +192,81 @@ def test_benign_payload_of_similar_length_with_no_secret_stays_allowed():
     proposed = {"name": "email_send", "arguments": {"to": _ATTACKER, "body": benign_body}}
     verdict = guard.check(goal=_GOAL, proposed=proposed, sources=_sources(_SECRET))
     assert verdict.decision == "allow"
+
+
+# --- Task 3: fragment matching (CyberRAG -- split exfiltration) -----------------------
+
+# 20 normalized chars, 11 letters + 9 digits: long enough and mixed enough to be
+# "secret-shaped" per the fragmentable rule (>=20 chars, >=4 digits, >=4 letters).
+_FRAG_SECRET = "CTR-SYN-ABCDE123456789"
+
+
+def test_reveals_any_finds_a_fragment_of_a_long_secret_shaped_needle():
+    needle = normalize(_FRAG_SECRET)
+    window = needle[5:15]  # a 10-char run lifted from the middle, not an edge case
+    assert reveals_any(f"noise {window} noise", {needle}) == needle
+
+
+def test_reveals_any_ignores_a_fragment_shorter_than_the_window():
+    needle = normalize(_FRAG_SECRET)
+    too_short = needle[:9]
+    assert reveals_any(f"noise {too_short} noise", {needle}) == ""
+
+
+def test_reveals_any_never_fragments_a_needle_under_20_chars():
+    # Long enough to contain a 10-char window, but under the 20-char fragmentable floor
+    # -- the whole point of the floor is that a short identifier is never split-matched.
+    needle = normalize("CTR-SYN-123456789")
+    assert len(needle) < 20
+    window = needle[:10]
+    assert reveals_any(f"noise {window} noise", {needle}) == ""
+
+
+def test_reveals_any_never_fragments_a_hostname_shaped_needle():
+    # Long, but all letters -- fails the digit-mix test that separates a secret from an
+    # ordinary domain name.
+    needle = normalize("vendor-integrations-portal.example.com")
+    assert len(needle) >= 20
+    window = needle[:10]
+    assert reveals_any(f"noise {window} noise", {needle}) == ""
+
+
+def test_two_call_split_is_not_allowed_and_rewrite_reveals_no_window():
+    """The probe this task fixes: split a restricted secret into two roughly-equal
+    halves and send each in its own email_send call. Each half alone is a 10-char
+    window of the secret, so each call must be caught on its own -- through the SAME
+    HarisGuard instance, so recall.py's cross-call memory is in play exactly as it
+    would be for a real two-turn agent.
+    """
+    guard = HarisGuard(internal_email_domains=["corp.example"])
+    secret = _FRAG_SECRET
+    normalized = normalize(secret)
+    half1, half2 = normalized[:10], normalized[10:]
+
+    for half in (half1, half2):
+        proposed = {"name": "email_send", "arguments": {"to": _ATTACKER, "body": f"Part: {half}"}}
+        verdict = guard.check(goal=_GOAL, proposed=proposed, sources=_sources(secret))
+        assert verdict.decision != "allow"
+        assert "SENSITIVE_TO_EXTERNAL_SINK" in verdict.reason_codes
+        if verdict.decision == "rewrite":
+            rendered = json.dumps(verdict.rewritten)
+            assert reveals_any(rendered, {normalized}) == ""
+
+
+def test_nine_char_fragment_is_not_flagged():
+    guard = HarisGuard(internal_email_domains=["corp.example"])
+    normalized = normalize(_FRAG_SECRET)
+    nine_chars = normalized[:9]
+    proposed = {"name": "email_send", "arguments": {"to": _ATTACKER, "body": f"ref {nine_chars}"}}
+    verdict = guard.check(goal=_GOAL, proposed=proposed, sources=_sources(_FRAG_SECRET))
+    assert verdict.decision == "allow"
+
+
+def test_benign_payload_sharing_a_common_ten_char_word_stays_allowed():
+    guard = HarisGuard(internal_email_domains=["corp.example"])
+    proposed = {
+        "name": "email_send",
+        "arguments": {"to": _ATTACKER, "body": "Thanks for confirming, we will proceed as planned."},
+    }
+    verdict = guard.check(goal=_GOAL, proposed=proposed, sources=_sources(_FRAG_SECRET))
+    assert verdict.decision == "allow"

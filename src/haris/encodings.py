@@ -18,7 +18,7 @@ import binascii
 import codecs
 import re
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from urllib.parse import unquote
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]")
@@ -127,16 +127,88 @@ def reveals_any(text: str, needles: set[str]) -> str:
     plain text, so a rewrite could strip the plain token, forward its base64 copy, and
     call the result clean. Needles are tried in sorted order so the answer never depends
     on set iteration order, which varies with PYTHONHASHSEED.
+
+    A decoding that reveals only a long-enough FRAGMENT of a needle (CyberRAG 5.5's
+    split exfiltration: send half a secret per call) counts too -- see
+    `fragment_window_map`/`fragment_hits` below, the same helper `dataflow.py`'s hit
+    loop calls, so the two cannot disagree about what counts as a leak the way
+    detection and rewrite once disagreed about encodings.
     """
     if not needles or not text:
         return ""
     ordered = sorted(n for n in needles if n)
+    window_map = fragment_window_map(ordered)
     for _, decoded in variants(text):
         haystack = normalize(decoded)
         for needle in ordered:
             if needle in haystack:
                 return needle
+        hits = fragment_hits(haystack, window_map)
+        if hits:
+            return sorted(hits)[0]
     return ""
+
+
+# --- Fragment matching (CyberRAG -- split exfiltration) -------------------------------
+
+# A needle only counts as "secret-shaped" -- worth matching on a piece of it rather than
+# the whole thing -- once it is both long and mixed: long enough that a random 10-char
+# run of it is unlikely to collide with ordinary text, and mixing digits with letters so
+# an ordinary prose identifier or hostname (long, but usually all-letters) is excluded.
+# Mirrors secrets.py's own shape test for what counts as a secret in the first place.
+FRAGMENTABLE_MIN_CHARS = 20
+FRAGMENTABLE_MIN_DIGITS = 4
+FRAGMENTABLE_MIN_LETTERS = 4
+
+# Window length for fragment matching. Shorter windows catch a finer split -- an agent
+# could halve a secret into pieces below this size and still slip through -- but cost
+# precision: at W=10 any two needles that happen to share a common 10-char run collide,
+# and a payload need only reproduce ten consecutive characters of a secret to be judged
+# as carrying it. 10 is the point the brief fixes that trade-off at.
+FRAGMENT_WINDOW_CHARS = 10
+
+
+def _is_fragmentable(needle: str) -> bool:
+    """Every caller already hands this a normalized (lowercase, alnum-only) needle."""
+    if len(needle) < FRAGMENTABLE_MIN_CHARS:
+        return False
+    if sum(1 for ch in needle if ch.isdigit()) < FRAGMENTABLE_MIN_DIGITS:
+        return False
+    return sum(1 for ch in needle if ch.isalpha()) >= FRAGMENTABLE_MIN_LETTERS
+
+
+def fragment_window_map(needles: Iterable[str]) -> dict[str, str]:
+    """Every length-`FRAGMENT_WINDOW_CHARS` substring of each fragmentable needle,
+    mapped back to the needle it came from.
+
+    Built once per call site (`reveals_any` above, `dataflow.assess_dataflow`) and then
+    reused for every variant's haystack -- never rebuilt per variant, which is what
+    keeps the per-variant cost linear in the haystack alone. Needles are walked in
+    sorted order so that if two fragmentable needles happen to share a window, which one
+    the map remembers is fixed, not dependent on set/dict iteration order.
+    """
+    window_map: dict[str, str] = {}
+    for needle in sorted(n for n in needles if n and _is_fragmentable(n)):
+        for start in range(len(needle) - FRAGMENT_WINDOW_CHARS + 1):
+            window_map.setdefault(needle[start : start + FRAGMENT_WINDOW_CHARS], needle)
+    return window_map
+
+
+def fragment_hits(haystack: str, window_map: dict[str, str]) -> set[str]:
+    """Parent needles that any length-`FRAGMENT_WINDOW_CHARS` window of `haystack`
+    reveals, per `window_map` (from `fragment_window_map`).
+
+    Linear in `len(haystack)`: every window of the haystack is collected into a set
+    once, then intersected against `window_map` -- never a substring search repeated
+    per window, which is what a naive "for each window: window in haystack" would cost
+    and the brief specifically forbids (it degrades to quadratic on a long payload).
+    """
+    if not window_map or len(haystack) < FRAGMENT_WINDOW_CHARS:
+        return set()
+    haystack_windows = {
+        haystack[i : i + FRAGMENT_WINDOW_CHARS] for i in range(len(haystack) - FRAGMENT_WINDOW_CHARS + 1)
+    }
+    return {window_map[w] for w in haystack_windows if w in window_map}
 
 
 def variants(text: str) -> list[tuple[str, str]]:
