@@ -33,22 +33,25 @@ def _client(tmp_path):
     return TestClient(create_app(artifacts=tmp_path, journal=tmp_path / "journal.jsonl"))
 
 
-def test_the_console_is_a_tab_on_the_main_page(tmp_path):
+def test_the_console_is_a_page_of_the_main_interface(tmp_path):
     """One interface, not a second URL.
 
     It was a separate page first, and a judge hitting the old link before the server was
-    restarted got a bare 404. The console is now a tab on the trace viewer itself, so there
-    is one page to open and one place to navigate from.
+    restarted got a bare 404. The console is now a page of the trace viewer itself, reached
+    from the same sidebar as the traces, so there is one page to open and one place to
+    navigate from.
     """
     body = _client(tmp_path).get("/").text
-    assert 'id="tab-guard"' in body, "the main page must offer the console tab"
-    assert 'id="view-guard"' in body, "the console panel must live on the main page"
-    assert 'id="tab-traces"' in body, "the traces view must still be reachable"
-    assert '"api/guard"' in body, "the tab must call the endpoint that judges"
+    assert '"Connect an agent"' in body, "the sidebar must offer the console page"
+    assert '"Trace"' in body, "the traces view must still be reachable"
+    assert 'id: "g-proposed"' in body, "the console form must live on the main page"
+    assert '"api/guard"' in body, "the console must call the endpoint that judges"
 
 
 def test_the_old_link_still_lands_on_the_interface(tmp_path):
-    assert 'id="tab-guard"' in _client(tmp_path).get("/guard").text
+    body = _client(tmp_path).get("/guard").text
+    assert '"api/guard"' in body
+    assert 'endsWith("/guard")' in body, "the old link must open straight on the console"
 
 
 def test_a_leak_is_not_allowed_and_the_reason_is_named(tmp_path):
