@@ -53,13 +53,22 @@ _QUIET_DETAIL = "routing arguments grounded or not consequential"
 
 def _is_consequential(tool: str, policy: PolicyView) -> bool:
     """policy.consequential_tools is the authority when the policy declares any; a
-    policy that declares none has not opted out of the notion, so effect_class's
-    verb-shape inference is the fallback -- the same two-tier rule haris/lifecycle.py
-    already applies to the confirmation gate.
+    policy that declares none has not opted out of the notion -- silence is not the
+    same as "nothing here is consequential" -- so effect_class's verb-shape inference
+    is the fallback. haris/lifecycle.py's own gate does NOT do this: it only ever asks
+    the policy (`requires_confirmation` or `is_consequential`), with no verb-shape
+    fallback, because the confirmation gate must never widen beyond what the policy
+    actually declared. The two stages answer different questions -- this fallback is
+    this function's own two-tier design, not a precedent borrowed from lifecycle.py.
     """
     if policy.consequential_tools:
         return policy.is_consequential(tool)
-    return effect_class(tool) == "consequential"
+    # planner.py's own _EFFECT_ORDER ranks "unknown" (no recognized verb at all) the
+    # SAME as "consequential" -- an unrecognized tool is exactly the case to err toward
+    # "this could matter", and it would be inconsistent for this stage to go quiet on
+    # the tools it has the least information about. A plain "== 'consequential'" string
+    # check missed this: it silently excluded every unknown-shaped tool.
+    return effect_class(tool) in ("consequential", "unknown")
 
 
 def _least_trusted_source(token: str, spans: list[tuple[str, TrustLevel]]) -> TrustLevel | None:
@@ -164,4 +173,7 @@ def assess_argument_origin(
 
         return [Signal(code=UNTRUSTED_ARGUMENT_ORIGIN, weight=WEIGHT, value=0.0, detail=_QUIET_DETAIL)]
     except Exception:  # noqa: BLE001 -- a decision-path stage must degrade, never raise
-        return []
+        # An empty list and "nothing to report" look identical in the trace; a
+        # crashed stage and a quiet one should not. Every other stage's own fallback
+        # returns a quiet Signal, not nothing -- match that here too.
+        return [Signal(code=UNTRUSTED_ARGUMENT_ORIGIN, weight=WEIGHT, value=0.0, detail="stage error")]

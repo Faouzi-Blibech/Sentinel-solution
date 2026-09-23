@@ -227,6 +227,25 @@ def test_capability_stage_disabled_drops_the_signal_and_allows_the_fraud_case():
     assert decision.decision.value == "allow"
 
 
+def test_unknown_verb_tool_is_treated_as_consequential_when_policy_declares_none():
+    """Minor (c): planner.py's own _EFFECT_ORDER ranks an unrecognized verb shape
+    ("unknown") the SAME as "consequential" (both rank 2) -- an unrecognized tool is
+    exactly the case where erring toward "this could matter" is right, and the rest of
+    the system already treats it that way. `_is_consequential`'s fallback used to
+    compare by STRING equality ("== 'consequential'"), which silently excluded every
+    unknown-shaped tool even under a policy that declared no consequential tools at all
+    -- capability.py went quiet on exactly the tools it has the least information about.
+    """
+    request = _fraud_request(
+        action=CandidateAction(
+            type=ActionType.TOOL_CALL, tool="widget_frobnicate", arguments={"iban": IBAN, "amount": 1250}
+        ),
+        policy_context={},  # no consequential_tools declared anywhere
+    )
+    signal = _signal(request)
+    assert signal.value == 1.0
+
+
 def test_confirmation_pending_flag_silences_the_signal_directly():
     """Unit-level check on assess_argument_origin itself, independent of lifecycle's own
     computation of the flag -- confirmation_pending=True must silence the signal even
@@ -239,6 +258,27 @@ def test_confirmation_pending_flag_silences_the_signal_directly():
     assert loud[0].value == 1.0
     quiet = assess_argument_origin(request, view, policy, confirmation_pending=True)
     assert quiet[0].value == 0.0
+
+
+def test_stage_error_degrades_to_a_quiet_signal_not_an_empty_list(monkeypatch):
+    """Minor (g): an exception on this decision-path stage must degrade to a quiet
+    signal, the same way every other stage's fallback does (e.g. assess_plan's
+    "not a tool call" branches) -- an empty list makes 'nothing to report' and 'this
+    stage crashed' indistinguishable in the trace, which is exactly the distinction an
+    auditor needs."""
+    request = _fraud_request()
+    view = TrustView(request)
+    policy = PolicyView(request.policy_context)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(view, "untrusted_spans", boom)
+    signals = assess_argument_origin(request, view, policy)
+    assert len(signals) == 1
+    assert signals[0].code == UNTRUSTED_ARGUMENT_ORIGIN
+    assert signals[0].value == 0.0
+    assert signals[0].detail == "stage error"
 
 
 def test_malformed_argument_values_never_raise():
