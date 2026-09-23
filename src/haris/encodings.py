@@ -178,9 +178,10 @@ def _is_fragmentable(needle: str) -> bool:
     return sum(1 for ch in needle if ch.isalpha()) >= FRAGMENTABLE_MIN_LETTERS
 
 
-def fragment_window_map(needles: Iterable[str]) -> dict[str, str]:
+def fragment_window_map(needles: Iterable[str]) -> dict[str, frozenset[str]]:
     """Every length-`FRAGMENT_WINDOW_CHARS` substring of each fragmentable needle,
-    mapped back to the needle it came from.
+    mapped back to EVERY needle it came from (T3: two different needles can share one
+    window verbatim; attributing it to only one silently drops the other's fragment).
 
     Meant to be built once per call site (`reveals_any` above, `dataflow.assess_dataflow`)
     and reused for every variant's haystack -- but `_redact`'s replace callback calls
@@ -194,14 +195,15 @@ def fragment_window_map(needles: Iterable[str]) -> dict[str, str]:
 
 
 @lru_cache(maxsize=64)
-def _cached_fragment_window_map(needles: tuple[str, ...]) -> dict[str, str]:
+def _cached_fragment_window_map(needles: tuple[str, ...]) -> dict[str, frozenset[str]]:
     """`needles` arrives already deduplicated-by-sort from `fragment_window_map`, so the
     cache key is stable across callers that pass the same needle set in any order.
-    Needles are walked in sorted order so that if two fragmentable needles happen to
-    share a window, which one the map remembers is fixed, not dependent on set/dict
-    iteration order.
+    Needles are walked in sorted order so a window's needle set is built the same way
+    regardless of the input's own order -- not for a single-owner tie-break any more
+    (T3: every parent needle is kept, so there is no tie to break), but so the cached
+    dict is reproducibly identical for the same needle set.
     """
-    window_map: dict[str, str] = {}
+    window_map: dict[str, set[str]] = {}
     for needle in needles:
         if not _is_fragmentable(needle):
             continue
@@ -216,13 +218,18 @@ def _cached_fragment_window_map(needles: tuple[str, ...]) -> dict[str, str]:
             # of per needle.
             if window.isalpha() or window.isdigit():
                 continue
-            window_map.setdefault(window, needle)
-    return window_map
+            window_map.setdefault(window, set()).add(needle)
+    return {window: frozenset(parents) for window, parents in window_map.items()}
 
 
-def fragment_hits(haystack: str, window_map: dict[str, str]) -> set[str]:
+def fragment_hits(haystack: str, window_map: dict[str, frozenset[str]]) -> set[str]:
     """Parent needles that any length-`FRAGMENT_WINDOW_CHARS` window of `haystack`
     reveals, per `window_map` (from `fragment_window_map`).
+
+    The UNION of every window's parent needles (T3): a matching window can belong to
+    more than one needle, and reporting only one would silently drop the others --
+    exactly how a restricted value's fragment went unnoticed when it happened to share
+    a window with a confidential one.
 
     Linear in `len(haystack)`: every window of the haystack is collected into a set
     once, then intersected against `window_map` -- never a substring search repeated
@@ -234,7 +241,10 @@ def fragment_hits(haystack: str, window_map: dict[str, str]) -> set[str]:
     haystack_windows = {
         haystack[i : i + FRAGMENT_WINDOW_CHARS] for i in range(len(haystack) - FRAGMENT_WINDOW_CHARS + 1)
     }
-    return {window_map[w] for w in haystack_windows if w in window_map}
+    hits: set[str] = set()
+    for window in haystack_windows:
+        hits |= window_map.get(window, frozenset())
+    return hits
 
 
 def variants(text: str) -> list[tuple[str, str]]:

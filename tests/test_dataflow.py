@@ -241,6 +241,36 @@ def test_all_letter_window_of_a_ticket_url_does_not_collide_with_a_vendor_name()
     _clean(request)
 
 
+def test_shared_fragment_window_reports_every_parent_needle_not_just_one():
+    # T3: two DIFFERENT needles that happen to share one 10-char window -- before this
+    # fix, `fragment_window_map` attributed a shared window to whichever needle sorted
+    # first (`setdefault`), so the OTHER needle's ownership of that exact window was
+    # silently lost. Here the alphabetically-first needle is CONFIDENTIAL and the
+    # second is RESTRICTED: a case note carrying only the shared window read ALLOW,
+    # because the map had forgotten the restricted needle ever touched that window at
+    # all. `fragment_hits` must return the union of every needle a window belongs to.
+    shared = "a1b2c3d4e5"  # mixed, 10 chars -- survives I2's single-class window drop
+    needle_confidential = shared + "y9y9y9y9y9"  # starts with 'a' -- sorts first
+    needle_restricted = "zzzzzzzzzz" + shared  # starts with 'z' -- sorts second
+    request = make_request(
+        provenance={
+            "conf": (TrustLevel.TRUSTED_INTERNAL, Sensitivity.CONFIDENTIAL),
+            "rest": (TrustLevel.TRUSTED_INTERNAL, Sensitivity.RESTRICTED),
+        },
+        conversation=[
+            ConversationItem(
+                role="tool", kind="tool_result", content=f"Ref A: {needle_confidential}", provenance_ids=["conf"]
+            ),
+            ConversationItem(
+                role="tool", kind="tool_result", content=f"Ref B: {needle_restricted}", provenance_ids=["rest"]
+            ),
+        ],
+        action=CandidateAction(type=ActionType.RESPOND, content=f"Case note: reference {shared} recorded."),
+    )
+    signals, _ = assess_dataflow(request, TrustView(request), POLICY)
+    assert any(s.code == SENSITIVE_TO_EXTERNAL_SINK and s.value > 0 for s in signals)
+
+
 def test_fragment_window_named_by_the_user_does_not_count_as_a_restricted_copy():
     # A restricted record's hostname is also what the user's own goal names -- the
     # whole-needle "named_by_user" exemption already covers this for a full hit; I2

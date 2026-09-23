@@ -119,7 +119,7 @@ def assess_dataflow(
         # encodings.
         window_map = fragment_window_map(ordered)
         if named_by_user:
-            window_map = {w: needle for w, needle in window_map.items() if w not in named_by_user}
+            window_map = {w: parents for w, parents in window_map.items() if w not in named_by_user}
         for encoding, decoded in variants(payload):
             haystack = normalize(decoded)
             full_hits_here: set[str] = set()
