@@ -75,8 +75,11 @@ if ! ( cd "$CLONE" && $UV sync --python 3.12 --all-extras ); then
   exit 1
 fi
 
-echo "==> uv run --python 3.12 pytest -q"
-if ! ( cd "$CLONE" && $UV run --python 3.12 pytest -q ); then
+# With a kit, point the suite at it: tests/test_no_hardcoding.py's corpus checks skip when
+# they cannot find the kit, and a clone in a scratch directory never sits next to one --
+# so without this the clean-clone run would pass while silently skipping the audit.
+echo "==> uv run --python 3.12 pytest -q${KIT:+ (hard-coding audit against $KIT)}"
+if ! ( cd "$CLONE" && { [ -z "$KIT" ] || export SENTINEL_KIT="$KIT"; } && $UV run --python 3.12 pytest -q ); then
   echo "FAIL: the test suite does not pass in the clean clone." >&2
   exit 1
 fi
