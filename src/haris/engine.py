@@ -12,7 +12,7 @@ from copy import deepcopy
 from typing import Any
 
 from pydantic import ValidationError
-from sentinel.core.actions import Decision, DefenseDecision
+from sentinel.core.actions import CandidateAction, Decision, DefenseDecision
 from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
@@ -27,7 +27,7 @@ from haris.planner import assess_plan
 from haris.policy import PolicyView
 from haris.recall import tainted_values
 from haris.rewrite import safer_alternative
-from haris.signals import SENSITIVE_TO_EXTERNAL_SINK, Signal
+from haris.signals import CONSEQUENTIAL_WITHOUT_CONFIRMATION, SENSITIVE_TO_EXTERNAL_SINK, Signal
 from haris.trust import TrustView
 
 METADATA_VERSION = "1.0"
@@ -90,9 +90,18 @@ def decide_detailed(
     # CaMeL's argument-origin check: independent of plan/lifecycle, so it must NOT feed
     # `unauthorized` below -- that flag decides whether recalled memory counts as
     # authority, a different question from where a routing argument's value came from.
+    # It DOES need to know whether lifecycle's own gate already fired (I1): stacking an
+    # independent escalate-band signal on top of an already-firing confirmation gate
+    # noisy-ORs past the block threshold, breaking capability's own "escalate, never
+    # block" contract for a case the gate already covers.
     mark = time.perf_counter()
+    confirmation_pending = any(
+        s.code == CONSEQUENTIAL_WITHOUT_CONFIRMATION and s.value > 0.0 for s in lifecycle_signals
+    )
     capability_signals = (
-        assess_argument_origin(request, view, policy) if settings.capability_enabled else []
+        assess_argument_origin(request, view, policy, confirmation_pending)
+        if settings.capability_enabled
+        else []
     )
     signals += capability_signals
     timings["capability"] = round((time.perf_counter() - mark) * 1000, 3)
@@ -117,11 +126,18 @@ def decide_detailed(
     # Recall-backed too, so a rewrite redacts a value remembered from an earlier request
     # in this run and not just one visible in this one (report.md 8.1).
     tainted = tainted_values(request, view, Sensitivity.CONFIDENTIAL, settings)
-    alternative = (
-        safer_alternative(request.candidate_action, policy, tainted, reasons=result.active_codes)
-        if settings.rewrite_enabled
-        else None
-    )
+
+    # `safer_alternative` scans the whole action for tainted content -- real cost on a
+    # large body -- and its answer is only ever used in the three branches below. Every
+    # ALLOW used to pay for it anyway (I3: most of the measured worst-case latency), so
+    # it is computed here, lazily, only where a rewrite could actually be offered.
+    def alternative() -> CandidateAction | None:
+        return (
+            safer_alternative(request.candidate_action, policy, tainted, reasons=result.active_codes)
+            if settings.rewrite_enabled
+            else None
+        )
+
     # A detected leak is never delegated to a human. The kit's simulated human approves an
     # escalation iff its envelope -- tool and match keys -- matches a legitimate step, and
     # never reads content; so an escalated draft to the vendor carrying an encoded token
@@ -129,17 +145,14 @@ def decide_detailed(
     # is in the envelope. For a leak the answer is a provably clean rewrite, or a block.
     leak = SENSITIVE_TO_EXTERNAL_SINK in result.active_codes
     if leak:
-        decision, rewritten = (
-            (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
-        )
+        alt = alternative()
+        decision, rewritten = (Decision.REWRITE, alt) if alt is not None else (Decision.BLOCK, None)
     elif result.risk_score >= settings.block_threshold:
-        decision, rewritten = (
-            (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
-        )
+        alt = alternative()
+        decision, rewritten = (Decision.REWRITE, alt) if alt is not None else (Decision.BLOCK, None)
     elif result.risk_score >= settings.escalate_threshold:
-        decision, rewritten = (
-            (Decision.REWRITE, alternative) if alternative is not None else (Decision.ESCALATE, None)
-        )
+        alt = alternative()
+        decision, rewritten = (Decision.REWRITE, alt) if alt is not None else (Decision.ESCALATE, None)
     else:
         decision, rewritten = Decision.ALLOW, None
 

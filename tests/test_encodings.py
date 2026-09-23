@@ -5,7 +5,7 @@ import codecs
 import json
 import time
 
-from haris.encodings import MAX_SCAN_CHARS, normalize, reveals_any, variants
+from haris.encodings import MAX_SCAN_CHARS, fragment_window_map, normalize, reveals_any, variants
 from haris.guard import HarisGuard, Source
 
 
@@ -34,8 +34,14 @@ def test_variants_always_include_plain():
 
 
 def test_variants_depth1_names_are_in_the_specified_order():
+    # "hello" has no percent-escapes and no confusables, so url and unicode both decode
+    # to the SAME text plain already returned -- I3's dedup drops them (see
+    # test_variants_depth1_dedupes_a_decoding_byte_identical_to_an_earlier_one below).
+    # base32/hex find no token to decode either, so they collide with base64's "".
+    # What's left is the order-preserving subsequence of names with a genuinely new
+    # decoded text.
     names = [name for name, _ in variants("hello")]
-    assert names[:8] == ["plain", "url", "unicode", "base64", "base32", "hex", "rot13", "reversed"]
+    assert names[:4] == ["plain", "base64", "rot13", "reversed"]
 
 
 def test_variants_decode_base32():
@@ -83,10 +89,47 @@ def test_variants_depth2_base64_of_base64():
 
 
 def test_variants_depth2_reversed_then_rot13():
+    # rot13 is a per-character substitution, so it commutes with reversal: rot13-then-
+    # reverse and reverse-then-rot13 land on the exact same decoded text. I3's dedup
+    # keeps only the first name to produce it, and "rot13" precedes "reversed" in
+    # `_TRANSFORMS`, so "rot13+reversed" wins this collision and "reversed+rot13" is
+    # dropped -- see test_variants_depth2_dedupes_commuting_rot13_and_reversed below.
     secret = "CTR-SYN-ABC123"
     disguised = codecs.decode(secret[::-1], "rot13")
     found = dict(variants(disguised))
-    assert normalize(secret) in normalize(found["reversed+rot13"])
+    assert normalize(secret) in normalize(found["rot13+reversed"])
+
+
+# --- Task I3: dedupe a decoded variant byte-identical to one already returned --------
+
+
+def test_variants_depth1_dedupes_a_decoding_byte_identical_to_an_earlier_one():
+    # "hello" has no percent-escapes and no confusables: url(text) == text == plain,
+    # and unicode(text) == text == plain too. Both would just repeat plain's downstream
+    # normalize+search work under a different name, which was most of the measured
+    # worst-case latency (I3) -- so they are dropped, and plain (added first) wins.
+    names = [name for name, _ in variants("hello")]
+    assert names[0] == "plain"
+    assert "url" not in names
+    assert "unicode" not in names
+
+
+def test_variants_depth2_dedupes_a_transform_composed_with_its_own_inverse():
+    # rot13(rot13(x)) == x == plain, and reversed(reversed(x)) == x == plain: both
+    # composites just reproduce the plain text and add nothing a scan would not already
+    # cover, so neither "rot13+rot13" nor "reversed+reversed" should appear.
+    names = [name for name, _ in variants("hello world this is not a palindrome")]
+    assert "rot13+rot13" not in names
+    assert "reversed+reversed" not in names
+
+
+def test_variants_depth2_dedupes_commuting_rot13_and_reversed():
+    # rot13-then-reverse and reverse-then-rot13 are byte-identical (rot13 acts
+    # per-character, so it commutes with any reordering of the string) -- only the
+    # first-computed name survives the collision.
+    names = [name for name, _ in variants("hello world this is not a palindrome")]
+    assert "rot13+reversed" in names
+    assert "reversed+rot13" not in names
 
 
 def test_variants_of_a_200000_char_input_returns_without_error_and_bounded():
@@ -196,9 +239,13 @@ def test_benign_payload_of_similar_length_with_no_secret_stays_allowed():
 
 # --- Task 3: fragment matching (CyberRAG -- split exfiltration) -----------------------
 
-# 20 normalized chars, 11 letters + 9 digits: long enough and mixed enough to be
-# "secret-shaped" per the fragmentable rule (>=20 chars, >=4 digits, >=4 letters).
-_FRAG_SECRET = "CTR-SYN-ABCDE123456789"
+# 20 normalized chars, 10 letters + 10 digits, letter/digit STRICTLY ALTERNATING: long
+# and mixed enough to be "secret-shaped" per the fragmentable rule (>=20 chars, >=4
+# digits, >=4 letters), and -- the point of I2 -- no 10-char window of it is ever
+# single-class. The prior secret ("CTR-SYN-ABCDE123456789") had an all-letter first
+# half ("ctrsynabcd"), which is exactly the shape I2's per-window filter now drops, so
+# it could no longer prove split exfiltration is still caught once that filter exists.
+_FRAG_SECRET = "C1T2-R3S4-Y5N6-A7B8-C9D0"
 
 
 def test_reveals_any_finds_a_fragment_of_a_long_secret_shaped_needle():
@@ -260,6 +307,17 @@ def test_nine_char_fragment_is_not_flagged():
     proposed = {"name": "email_send", "arguments": {"to": _ATTACKER, "body": f"ref {nine_chars}"}}
     verdict = guard.check(goal=_GOAL, proposed=proposed, sources=_sources(_FRAG_SECRET))
     assert verdict.decision == "allow"
+
+
+def test_fragment_window_map_is_cached_by_needle_set():
+    # I3: rebuilt from scratch on every call was the dominant cost in the measured
+    # worst-case latency (2.42 of 2.66s, rebuilt 741 times -- `_redact` calls
+    # `reveals_any` once per matched token, and each call used to rebuild the whole
+    # map). Same needle set -> same map object, not a fresh dict every time.
+    needles = (normalize(_FRAG_SECRET),)
+    first = fragment_window_map(needles)
+    second = fragment_window_map(needles)
+    assert first is second
 
 
 def test_benign_payload_sharing_a_common_ten_char_word_stays_allowed():
