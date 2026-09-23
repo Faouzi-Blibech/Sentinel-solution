@@ -220,8 +220,8 @@ _SOURCES_RETRIEVAL = "guard.sources"
 
 
 def _message_text(content: Any) -> str:
-    """`content` is either a string or a list of blocks each having `text` or `content`
-    (task-2-brief.md) -- the two shapes OpenAI's and Anthropic's content-block arrays use.
+    """`content` is either a string or a list of blocks each having `text` or `content`:
+    the two shapes OpenAI's and Anthropic's content-block arrays use.
     """
     if isinstance(content, str):
         return content
@@ -343,7 +343,7 @@ def _build_sources(
     sources: Sequence[Source | Mapping[str, Any]], now: datetime
 ) -> tuple[list[ProvenanceRecord], list[ConversationItem]]:
     """Sources become ProvenanceRecords at their declared trust and sensitivity, and
-    conversation items referencing them (task-2-brief.md). `SourceType.DOCUMENT` is the
+    conversation items referencing them. `SourceType.DOCUMENT` is the
     contract's own generic bucket -- a `Source` carries no domain-specific kind, and
     inventing one from its text would be exactly the keyword-matching hard rule 1 forbids.
     """
@@ -381,7 +381,7 @@ def _build_sources(
 
 class _Shape(Enum):
     """Which of the four accepted `proposed` shapes we saw, so a `rewrite` can be handed
-    back in the same shape it arrived in (task-2-brief.md) instead of a shape the caller
+    back in the same shape it arrived in instead of a shape the caller
     now has to translate before it can feed it back to its own provider.
     """
 
@@ -529,7 +529,7 @@ def _parse_openai_arguments(raw: Any) -> dict[str, Any]:
     except (json.JSONDecodeError, TypeError, ValueError):
         # OpenAI's `function.arguments` is a JSON string the model produced; a truncated
         # or hand-edited one is real traffic, not an attack. Keeping it as a single
-        # string argument (task-2-brief.md) is how the call stays judgeable instead of
+        # string argument is how the call stays judgeable instead of
         # falling back to the internal-error escalation for an ordinary parse hiccup.
         return {"value": raw}
     return dict(parsed) if isinstance(parsed, Mapping) else {"value": raw}
@@ -634,9 +634,8 @@ def _normalize_single(proposed: Any) -> tuple[CandidateAction, _Shape, dict[str,
     """Recognize exactly ONE of the four documented shapes in `proposed` (already
     unbundled by `_normalize_proposed`), or escalate. Never defaults an unrecognized
     mapping or object to a final answer -- only a bare `str`, or something that
-    explicitly carries a `content` field the way the brief's documented final-answer
-    shape does, reads as one (C1: "send any other unrecognised mapping or object to
-    escalate ... never to final answer").
+    explicitly carries a `content` field the way the documented final-answer shape
+    does, reads as one. Any other unrecognised mapping or object escalates.
     """
     if isinstance(proposed, str):
         _check_content_length(proposed)
@@ -730,7 +729,7 @@ def _render_rewritten(
     naming: _Naming,
     declared_tools: Mapping[str, str],
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """`rewritten` comes back in the caller's own shape (task-2-brief.md): OpenAI in,
+    """`rewritten` comes back in the caller's own shape: OpenAI in,
     OpenAI out with `arguments` re-serialized to a JSON string; Anthropic in, Anthropic
     out with `input` as a dict; plain in, plain out. Nested argument values and the
     caller's own tool/key spelling are restored (I4), not left in this module's internal
@@ -851,7 +850,7 @@ class HarisGuard:
         # instance, generated once, so every call through this SAME instance shares
         # haris/recall.py's taint memory, and no two different instances ever do.
         self._default_run_id = f"guard-{uuid.uuid4().hex}"
-        # `step_id` defaults to a per-instance counter (task-2-brief.md). Named
+        # `step_id` defaults to a per-instance counter. Named
         # `_step_counter`, not `_step_id`/`step_id`: this file's own module docstring
         # explains why no attribute here may be named exactly `run_id` or `step_id`.
         self._step_counter = 0

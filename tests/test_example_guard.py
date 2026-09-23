@@ -1,7 +1,7 @@
 """Proves `examples/guard_any_agent.py` actually demonstrates what it claims to.
 
-Run in-process (import the module, call `run_demo`) rather than shelling out
-(task-3-brief.md): a subprocess test can only see exit code and stdout text, and would
+Run in-process (import the module, call `run_demo`) rather than shelling out:
+a subprocess test can only see exit code and stdout text, and would
 have to parse the very human-readable output this file is free to change. Calling
 `run_demo` directly gets the real `Verdict`s and the real "what was finally sent" values.
 
@@ -41,7 +41,7 @@ def test_injected_scenario_produces_at_least_one_non_allow_decision():
 
 
 def test_credential_never_appears_in_what_was_finally_sent():
-    """The load-bearing assertion (task-3-brief.md): not "HARIS returned a decision",
+    """The load-bearing assertion: not "HARIS returned a decision",
     but that the literal credential is absent from every payload that actually left the
     scenario. `sent` is `None` for a block/escalate (nothing sent) or the rewritten,
     redacted payload for a rewrite -- never the original, untouched `proposed`.
@@ -56,7 +56,7 @@ def test_credential_never_appears_in_what_was_finally_sent():
 
 def test_rewrite_step_actually_redacted_rather_than_being_blocked_or_escalated():
     """A stronger version of the assertion above: proves the credential was stopped by a
-    verified-clean REWRITE (task-3-brief's "rewrite, not refusal"), not by the sent value
+    verified-clean REWRITE ("rewrite, not refusal"), not by the sent value
     merely being `None` because the action was blocked outright -- which would also
     satisfy the previous test but demonstrate a different, less interesting behaviour.
     """

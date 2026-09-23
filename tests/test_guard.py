@@ -1,11 +1,10 @@
 """The second front door: `HarisGuard` (in-process) and `POST /v1/guard` (HTTP).
 
-Task 1 built the decision core against `DefenseRequest`, a type only the SENTINEL kit
+The decision core is built against `DefenseRequest`, a type only the SENTINEL kit
 speaks. These tests prove the adapter that lets an OpenAI- or Anthropic-shaped agent
 loop call the same decision core without ever constructing a `DefenseRequest` itself --
-and that it inherits Task 1's run-scoped taint memory (haris/recall.py) rather than
-quietly resetting it every call, which was the trap most likely to bite this task (see
-task-2-brief.md's context note on `run_id`).
+and that it inherits the run-scoped taint memory (haris/recall.py) rather than
+quietly resetting it every call, which was the trap most likely to bite an adapter.
 
 A first review round found this file's shape-recognition tests proved only "didn't
 crash", not "recognized the shape" -- `_not_internal_error` alone survives a mutation
@@ -69,7 +68,7 @@ def test_openai_malformed_arguments_string_does_not_raise():
     proposed = {"id": "call_1", "function": {"name": "search_ticket", "arguments": "{not valid json"}}
     verdict = guard.check(goal="Look up ticket 123.", proposed=proposed)
     # It must still be judged, not merely not-crash: a malformed string becomes a
-    # single string argument (task-2-brief.md) rather than aborting the decision.
+    # single string argument rather than aborting the decision.
     _judged_tool_call(verdict, "search_ticket")
 
 
@@ -193,7 +192,7 @@ def test_restricted_source_to_external_destination_is_rewritten():
     assert verdict.rewritten is not None
     # Caller's own shape and envelope back: an OpenAI tool call in, one out, the SAME
     # call id, arguments re-serialized to a JSON string -- a caller must be able to
-    # feed this straight back to its provider without reshaping it (task-2-brief.md).
+    # feed this straight back to its provider without reshaping it.
     assert verdict.rewritten["id"] == "call_9"
     assert verdict.rewritten["type"] == "function"
     assert isinstance(verdict.rewritten["function"]["arguments"], str)

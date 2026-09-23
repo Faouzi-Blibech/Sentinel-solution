@@ -177,7 +177,7 @@ is something HARIS refused before it was fixed.
 Neither published corpus has a scenario in CaMeL's (arXiv 2503.18813) or CyberRAG's
 (FGCS 176 (2026) 108186, §5.5) shape, so their claims were checked by probe instead: run
 the same `HarisGuard` call against the commit before this hardening (`3449183`, a
-throwaway worktree) and against this branch. Full probes:
+throwaway worktree) and against the hardened code. Full probes:
 `tests/test_paper_probes.py`. §5.5 itself is an attack-
 classifier robustness benchmark that names three perturbation categories (character
 obfuscation, encoding variation, token reordering) without cataloging concrete
