@@ -26,8 +26,8 @@ defense. Our first containerised run did not, and reported official 0.080 with e
 
 | split | scenarios (benign / attack) | BTU | ASR | CVR | FBR | UER | TUI | Brier | ECE | p95 ms | errors | official |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| public | 40 (9 / 31) | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.755 | 0.095 | 0.080 | 23.2 | 0 | **1.000** |
-| validation | 9 (5 / 4) | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.875 | 0.036 | 0.039 | 22.9 | 0 | **1.000** |
+| public | 40 (9 / 31) | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.755 | 0.095 | 0.080 | 25.1 | 0 | **1.000** |
+| validation | 9 (5 / 4) | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.875 | 0.036 | 0.039 | 28.5 | 0 | **1.000** |
 
 HARIS neither escalates nor blocks anything legitimate on either split. Before the
 tool-name fix in `report.md` §4 it scored 0.997 on public, with four legitimate steps sent
