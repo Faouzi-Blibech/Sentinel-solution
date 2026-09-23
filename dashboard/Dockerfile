@@ -1,10 +1,12 @@
-# The HARIS trace viewer, as its own small image.
+# The HARIS trace viewer, as its own image.
 #
-# It is deliberately NOT part of the defense image in /Dockerfile. That image is what a
-# judge runs and scores; it carries the decision path and nothing else. The viewer only
-# reads run artifacts and the HARIS journal from mounted folders, and needs nothing from
-# HARIS but `haris.config` (for the escalate/block thresholds it draws), which has no
-# dependencies of its own -- so neither the organizers' kit nor the decision code is here.
+# It is still NOT the defense image in /Dockerfile: that image is what a judge runs and
+# scores, and it carries the decision path and nothing else. The viewer reads run
+# artifacts and the HARIS journal from mounted folders -- but its "Connect an agent"
+# console runs `haris.guard` in-process, and the guard is the whole decision path plus
+# the organizers' contract types. An image with only `haris/config.py` answered every
+# console check with "No module named 'haris.guard'", so both are installed here, pinned
+# to the same kit commit as the defense image.
 #
 # Built from the repository root by compose.yaml; dashboard/Dockerfile.dockerignore keeps
 # the build context to the few files below.
@@ -12,11 +14,19 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+ARG SENTINEL_REF=dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2
+ARG SENTINEL_REPO=https://github.com/Skan22/Sentinel_Starter_Kit.git
+
 # Pinned to the versions in uv.lock, so the viewer runs what the tests ran.
-RUN pip install --no-cache-dir "fastapi==0.141.1" "uvicorn==0.53.0" "pydantic==2.13.5" \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && pip install --no-cache-dir "fastapi==0.141.1" "uvicorn==0.53.0" "pydantic==2.13.5" \
+       "sentinel-bench @ git+${SENTINEL_REPO}@${SENTINEL_REF}" \
+    && apt-get purge -y --auto-remove git \
+    && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 haris
 
-COPY src/haris/__init__.py src/haris/config.py ./src/haris/
+COPY src ./src
 COPY dashboard ./dashboard
 
 ENV PYTHONPATH=/app/src:/app

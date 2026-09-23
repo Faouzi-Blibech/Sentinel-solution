@@ -94,3 +94,20 @@ def test_manifest_matches_the_required_schema():
     # Every external model and dataset must be declared.
     assert "models" in manifest
     assert "datasets" in manifest
+
+
+def test_the_viewer_image_can_run_the_guard_console():
+    """The console on the viewer's "Connect an agent" page runs `haris.guard` in-process.
+
+    The viewer image once carried only `haris/config.py`, so under `docker compose` -- the
+    path the README gives a judge -- every console check answered
+    "ModuleNotFoundError: No module named 'haris.guard'" while the local viewer worked.
+    """
+    dockerfile = (ROOT / "dashboard" / "Dockerfile").read_text()
+    ignore = (ROOT / "dashboard" / "Dockerfile.dockerignore").read_text().splitlines()
+    ref = next(line for line in (ROOT / "Dockerfile").read_text().splitlines() if line.startswith("ARG SENTINEL_REF="))
+
+    assert ref in dockerfile, "the viewer must pin the same contract commit as the defense image"
+    assert "sentinel-bench @ git+" in dockerfile, "haris.guard imports the kit's contract types"
+    assert "COPY src ./src" in dockerfile, "haris.guard needs the whole decision path, not config.py alone"
+    assert "!src/" in ignore, "the build context must carry the package the Dockerfile copies"
