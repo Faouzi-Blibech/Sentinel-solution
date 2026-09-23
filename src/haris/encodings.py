@@ -19,6 +19,7 @@ import codecs
 import re
 import unicodedata
 from collections.abc import Callable, Iterable
+from functools import lru_cache
 from urllib.parse import unquote
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]")
@@ -181,14 +182,29 @@ def fragment_window_map(needles: Iterable[str]) -> dict[str, str]:
     """Every length-`FRAGMENT_WINDOW_CHARS` substring of each fragmentable needle,
     mapped back to the needle it came from.
 
-    Built once per call site (`reveals_any` above, `dataflow.assess_dataflow`) and then
-    reused for every variant's haystack -- never rebuilt per variant, which is what
-    keeps the per-variant cost linear in the haystack alone. Needles are walked in
-    sorted order so that if two fragmentable needles happen to share a window, which one
-    the map remembers is fixed, not dependent on set/dict iteration order.
+    Meant to be built once per call site (`reveals_any` above, `dataflow.assess_dataflow`)
+    and reused for every variant's haystack -- but `_redact`'s replace callback calls
+    `reveals_any` once per matched token in the payload, which calls this function again
+    each time. Without the cache below that meant hundreds of rebuilds of the same map
+    per decision (measured: 741, on an 8,000-char body) -- the dominant cost in the I3
+    latency finding. Callers still get a dict keyed however `needles` arrived; the cache
+    lives in the sorted-tuple wrapper so it is transparent to every caller.
+    """
+    return _cached_fragment_window_map(tuple(sorted(n for n in needles if n)))
+
+
+@lru_cache(maxsize=64)
+def _cached_fragment_window_map(needles: tuple[str, ...]) -> dict[str, str]:
+    """`needles` arrives already deduplicated-by-sort from `fragment_window_map`, so the
+    cache key is stable across callers that pass the same needle set in any order.
+    Needles are walked in sorted order so that if two fragmentable needles happen to
+    share a window, which one the map remembers is fixed, not dependent on set/dict
+    iteration order.
     """
     window_map: dict[str, str] = {}
-    for needle in sorted(n for n in needles if n and _is_fragmentable(n)):
+    for needle in needles:
+        if not _is_fragmentable(needle):
+            continue
         for start in range(len(needle) - FRAGMENT_WINDOW_CHARS + 1):
             window_map.setdefault(needle[start : start + FRAGMENT_WINDOW_CHARS], needle)
     return window_map
@@ -219,21 +235,43 @@ def variants(text: str) -> list[tuple[str, str]]:
     actually differs from the input (an output identical to the input -- true of
     `plain` always, and of e.g. `url` on text with no percent-escapes -- would just
     reproduce a depth-1 name under a redundant composite one), naming the result
-    "<first>+<second>" (e.g. "base64+base64", "reversed+rot13"). This is what lets a
+    "<first>+<second>" (e.g. "base64+base64", "rot13+reversed"). This is what lets a
     doubled or combined disguise (CyberRAG 5.5) surface without hard-coding either
     transform: composing the existing seven, generically, covers it.
 
+    Every result is deduplicated by its DECODED TEXT, not its name: `url` and `unicode`
+    both decode to the same plain text on an input with no percent-escapes and no
+    confusables, and rot13 commutes with reversal so "rot13+reversed" and
+    "reversed+rot13" land on the identical string. A duplicate would cost every caller
+    (`reveals_any`, `dataflow.assess_dataflow`) a full normalize-and-search pass over the
+    haystack for no new information -- most of the I3 latency finding was exactly this,
+    multiplied by however many times `variants()` runs per decision. The FIRST name to
+    produce a given decoded text keeps it (`plain` always wins its own text, since it is
+    added first); later names that land on the same text are dropped entirely, not
+    merely hidden -- they never reach the caller's scan.
+
     Two bounds keep this linear and finite rather than a combinatorial blow-up on a
     large input: a depth-1 output longer than MAX_SCAN_CHARS gets no second pass at
-    all, and once the running total of every variant's length (depth-1 included) passes
+    all, and once the running total of every variant's length (depth-1 included, before
+    dedup -- the transform still ran, so it still counts as work done) passes
     DEPTH2_BUDGET_CHARS no more are added. On an ordinary large input the depth-1 sum
     alone is usually already most of that budget (plain/url/unicode/rot13/reversed are
     all full-length on text with no matches), so this naturally throttles depth-2 work
     down as input size grows -- exactly the shape the latency budget wants.
     """
     text = text[:MAX_SCAN_CHARS]
+    seen: set[str] = set()
+    results: list[tuple[str, str]] = []
+
+    def add(name: str, decoded: str) -> None:
+        if decoded in seen:
+            return
+        seen.add(decoded)
+        results.append((name, decoded))
+
     depth1 = [("plain", text)] + [(name, fn(text)) for name, fn in _TRANSFORMS]
-    results = list(depth1)
+    for name, decoded in depth1:
+        add(name, decoded)
     total_chars = sum(len(decoded) for _, decoded in depth1)
 
     for name1, decoded1 in depth1:
@@ -243,6 +281,6 @@ def variants(text: str) -> list[tuple[str, str]]:
             if total_chars > DEPTH2_BUDGET_CHARS:
                 return results
             decoded2 = fn2(decoded1)
-            results.append((f"{name1}+{name2}", decoded2))
             total_chars += len(decoded2)
+            add(f"{name1}+{name2}", decoded2)
     return results
