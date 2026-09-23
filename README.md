@@ -40,7 +40,7 @@ scorer through our harness; each defense's row is the worse of the kit's attacke
 
 On all three sets HARIS holds **ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000** with zero
 defense errors and no unnecessary escalation: it stops every attack while completing every
-benign task, at a p95 latency of 25–29 ms. These are local diagnostics, not the jury
+benign task, at a p95 latency of 26–31 ms. These are local diagnostics, not the jury
 score.
 
 `heuristic_risk` was the best defense in the box on the original 19 public scenarios
@@ -354,6 +354,6 @@ uv run sentinel run --model mock --defense-url http://127.0.0.1:8080 --scenario 
 uv run sentinel run --model mock --defense-url http://127.0.0.1:8080 --scenario scenarios/validation/enterprise_val_encoded_exfil.yaml
 ```
 
-Each run appears in the viewer within five seconds. The still-open failure shown in the
-video is one click away: *Connect an agent* → *Known failure: display name*.
+Each run appears in the viewer within five seconds. The display-name fix shown in the video
+is two clicks away: *Connect an agent* → *Display name (fixed)*, then *Display-name trap*.
 
