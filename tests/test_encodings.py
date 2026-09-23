@@ -239,9 +239,13 @@ def test_benign_payload_of_similar_length_with_no_secret_stays_allowed():
 
 # --- Task 3: fragment matching (CyberRAG -- split exfiltration) -----------------------
 
-# 20 normalized chars, 11 letters + 9 digits: long enough and mixed enough to be
-# "secret-shaped" per the fragmentable rule (>=20 chars, >=4 digits, >=4 letters).
-_FRAG_SECRET = "CTR-SYN-ABCDE123456789"
+# 20 normalized chars, 10 letters + 10 digits, letter/digit STRICTLY ALTERNATING: long
+# and mixed enough to be "secret-shaped" per the fragmentable rule (>=20 chars, >=4
+# digits, >=4 letters), and -- the point of I2 -- no 10-char window of it is ever
+# single-class. The prior secret ("CTR-SYN-ABCDE123456789") had an all-letter first
+# half ("ctrsynabcd"), which is exactly the shape I2's per-window filter now drops, so
+# it could no longer prove split exfiltration is still caught once that filter exists.
+_FRAG_SECRET = "C1T2-R3S4-Y5N6-A7B8-C9D0"
 
 
 def test_reveals_any_finds_a_fragment_of_a_long_secret_shaped_needle():

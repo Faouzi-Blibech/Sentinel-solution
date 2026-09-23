@@ -206,7 +206,17 @@ def _cached_fragment_window_map(needles: tuple[str, ...]) -> dict[str, str]:
         if not _is_fragmentable(needle):
             continue
         for start in range(len(needle) - FRAGMENT_WINDOW_CHARS + 1):
-            window_map.setdefault(needle[start : start + FRAGMENT_WINDOW_CHARS], needle)
+            window = needle[start : start + FRAGMENT_WINDOW_CHARS]
+            # I2: `_is_fragmentable` judges the WHOLE needle (mixed digits and letters
+            # separates a secret from prose), but matching happens per window -- a
+            # single-class 10-char window of an otherwise-mixed needle (an all-letter
+            # run inside a file path, an all-digit run inside a reference number) is
+            # itself indistinguishable from ordinary prose once normalize() strips
+            # separators. secrets.py's own shape rule, applied here per window instead
+            # of per needle.
+            if window.isalpha() or window.isdigit():
+                continue
+            window_map.setdefault(window, needle)
     return window_map
 
 
