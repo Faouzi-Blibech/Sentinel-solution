@@ -3,7 +3,7 @@
 Context for coding agents. Everything below was **verified by reading and running the
 official starter kit**, not inferred. Trust it over your priors.
 
-**Deadline: 2026-09-22 23:59.** Scope accordingly — prefer shipping a smaller correct thing.
+**Deadline: 2026-09-23 23:59.** Scope accordingly — prefer shipping a smaller correct thing.
 
 ## What we are building
 

@@ -40,7 +40,7 @@ scorer through our harness; each defense's row is the worse of the kit's attacke
 
 On all three sets HARIS holds **ASR 0.000, CVR 0.000, FBR 0.000, BTU 1.000** with zero
 defense errors and no unnecessary escalation: it stops every attack while completing every
-benign task, at a p95 latency of about 23 ms. These are local diagnostics, not the jury
+benign task, at a p95 latency of 25–29 ms. These are local diagnostics, not the jury
 score.
 
 `heuristic_risk` was the best defense in the box on the original 19 public scenarios
@@ -71,6 +71,7 @@ DefenseRequest
    -> memory authority         is recalled memory standing in for a permission nobody gave?
    -> capability commitment    did the authenticated goal and the policy authorize this?
    -> confirmation lifecycle   is a consequential action backed by a RECORDED human approval?
+   -> argument origin          did a consequential tool's payee or endpoint come only from untrusted text?
    -> data flow                does sensitive data reach a sink it may not, in any encoding?
    -> fusion                   one calibrated risk, decomposed into named signals
    -> decision + rewrite       allow / block / escalate / a verified-clean safer equivalent
@@ -85,8 +86,11 @@ the official score multiplies by an `efficiency_factor` derived from it.
 | Path | Contents |
 |---|---|
 | `src/haris/` | The defense service |
+| `dashboard/` | The observability layer: the trace viewer and the live guard console |
 | `redteam/` | Adaptive attacker and held-out scenarios |
-| `dashboard/` | Live trace viewer |
+| `examples/` | HARIS guarding an agent loop it has never seen |
+| `scripts/` | Evaluation, red-team, ablation, viewer and clean-clone scripts |
+| `tests/` | The test suite, including the hard-coding audit |
 | `docs/superpowers/specs/` | Design specification and its reasoning |
 | `docs/superpowers/plans/` | Task-by-task implementation plan |
 | `docs/team/` | Workstream briefs |
@@ -94,12 +98,18 @@ the official score multiplies by an `efficiency_factor` derived from it.
 
 ## Quick start
 
-Python **3.12** is required (`>=3.12,<3.13`).
+**Prerequisites:** Python **3.12** (`>=3.12,<3.13`), Git, and [`uv`](https://docs.astral.sh/uv/)
+(`pip install uv`). If `uv` is then not on your PATH, type `python -m uv` wherever this
+README says `uv`; the scripts find it either way. On Windows, run every command below from
+**Git Bash**.
+
+**1. Install and test HARIS.**
 
 ```bash
+git clone https://github.com/Faouzi-Blibech/Sentinel-solution.git
+cd Sentinel-solution
 uv sync --python 3.12 --all-extras
-uv run --python 3.12 pytest -v
-uv run --python 3.12 uvicorn haris.service:app --host 127.0.0.1 --port 8080
+uv run --python 3.12 pytest -q
 ```
 
 `--all-extras` is not optional. The contract types come from the organizers' kit, which is
@@ -107,10 +117,36 @@ not on PyPI and therefore cannot sit in `dependencies` (see `pyproject.toml`); t
 runner is an extra too. Without the flag `uv sync` installs the four base dependencies,
 stops, and the next line fails with `No module named 'sentinel'`.
 
-Then, from the official starter kit directory:
+**2. Get the official starter kit**, pinned to the commit we evaluated against, next to this
+repository:
 
 ```bash
+git clone https://github.com/Skan22/Sentinel_Starter_Kit.git ../Sentinel_Starter_Kit
+git -C ../Sentinel_Starter_Kit checkout dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2
+```
+
+**3. Run the defense and score it.** One command serves this checkout on a free port,
+checks it can make a real decision, runs the kit's evaluation against it, and rejects the
+run if any decision failed to reach the defense:
+
+```bash
+scripts/run_eval.sh ../Sentinel_Starter_Kit public
+scripts/run_eval.sh ../Sentinel_Starter_Kit validation
+```
+
+To serve the defense yourself instead (the kit calls `POST /v1/decision`; `GET /healthz`
+returns 200):
+
+```bash
+uv run --python 3.12 uvicorn haris.service:app --host 127.0.0.1 --port 8080
+# then, from the kit directory:
 uv run sentinel eval public --defense-url http://127.0.0.1:8080
+```
+
+**4. Open the observability layer** on the runs you just scored:
+
+```bash
+scripts/run_dashboard.sh ../Sentinel_Starter_Kit          # http://127.0.0.1:8090
 ```
 
 To check that a **fresh clone** of this repository actually works end to end -- not just
@@ -119,8 +155,8 @@ reproduction step -- clone into a scratch directory and run the whole quick star
 
 ```bash
 scripts/verify_clean_clone.sh                              # local clone, offline
-scripts/verify_clean_clone.sh https://github.com/<org>/<repo>.git   # a pushed remote
-scripts/verify_clean_clone.sh "" /path/to/Sentinel_Starter_Kit       # + one real scenario
+scripts/verify_clean_clone.sh https://github.com/Faouzi-Blibech/Sentinel-solution.git   # the public repo
+scripts/verify_clean_clone.sh "" ../Sentinel_Starter_Kit             # + the hard-coding audit and one real scenario
 ```
 
 A local clone only ever sees committed state, which is the point: it is exactly what a judge's
@@ -250,21 +286,60 @@ The report: [`docs/report/report.md`](docs/report/report.md). The evidence table
 [`docs/report/findings.md`](docs/report/findings.md). What HARIS protects against, where it
 fails, and when it asks a human: [`docs/report/responsible-ai.md`](docs/report/responsible-ai.md).
 
-## Trace viewer
-
-The observability layer joins two sources. The simulator's artifact says *what happened*; it
-keeps only decision, risk score, confidence and reason codes, and no trust level ever reaches
-it. HARIS writes its own journal alongside, which says *why*. They join on `(run_id, step_id)`.
+## Trace viewer (the observability layer)
 
 ```bash
-scripts/run_dashboard.sh /path/to/Sentinel_Starter_Kit    # http://127.0.0.1:8090
+scripts/run_dashboard.sh ../Sentinel_Starter_Kit    # http://127.0.0.1:8090
 ```
 
-Four linked panels: the step spine, the risk decomposition read from the recorded signals, the
-trust chain, and the data flow from a sensitive value to the destination that was refused.
-Move through steps with `J` and `K`; jump to the first intervention with `B`.
+It joins two sources. The simulator's artifact says *what happened*; it keeps only the
+decision, risk score, confidence and reason codes, and no trust level ever reaches it. HARIS
+writes its own journal alongside, which says *why*. They join on `(run_id, step_id)`. The
+list refreshes every five seconds, so a run appears while it is being scored.
 
-A trace recorded by any other defense still renders, just without the decomposition.
+One page, four views, chosen in the sidebar:
+
+- **Trace** — a verdict banner (did the attack go through, did the task complete, peak
+  risk), the user's goal, and the trajectory: every step as a node with its decision, risk
+  and the untrusted sources that entered context. Clicking a step opens the **inspector**:
+  - *Risk breakdown*: every signal that fired, its weight × value, and how they combine
+    (noisy-OR) against the 0.40 escalate and 0.70 block thresholds; the quiet signals
+    are listed with the reason each stayed quiet.
+  - *Trust chain*: every source in context on the six-level trust ladder, and the trust
+    boundary that separates what can authorize from what is only evidence.
+  - *Before → after*: for a rewrite, exactly what the agent proposed and what ran instead.
+  - *Data flow*: whether a sensitive value was in the payload, how it was found (plain,
+    base64, a fragment…), the rule that applied, where it was going, and what happened.
+  - *Raw event*: the journaled decision and HARIS's stage timings.
+
+  The inspector can be detached into a window you move, resize and maximise (`D`).
+- **Overview** — every run for the selected defense, with attacks stopped, legitimate tasks
+  blocked, rewrites and tasks completed.
+- **Compare defenses** — the same scenario under HARIS and every baseline, side by side,
+  and suite-wide bars.
+- **Connect an agent** — the three commands to put HARIS in front of any agent, and a live
+  console: paste an OpenAI or Anthropic tool call and see HARIS's decision, explained the
+  same way.
+
+The defense picker covers HARIS, the five shipped baselines and the HARIS ablation
+variants. A trace recorded by a baseline still renders, without the reasoning, which it
+never recorded. Keys: `J`/`K` step, `B` first intervention, `D` detach the inspector,
+`[`/`]` run, `/` search, `Esc` close, `\` sidebar. Dark and light themes.
+
+## No scenario hard-coding
+
+HARIS decides only from provenance, policy, the action's shape and the structure of content.
+It never reads a scenario id, a filename, a domain name or an expected outcome.
+`tests/test_no_hardcoding.py` enforces this on every run. It extracts every identifier the
+organizers invented from the kit's corpus (scenario ids, filenames, addresses, synthetic
+domains, record ids) and fails if any appears in `src/haris/`; it fails if any module reads
+`run_id` or `step_id` as a label outside the journal; and it tests that its own extractor
+still matches, so the audit cannot pass vacuously. The corpus checks run when the kit is
+present:
+
+```bash
+SENTINEL_KIT=../Sentinel_Starter_Kit uv run --python 3.12 pytest tests/test_no_hardcoding.py -v
+```
 
 ## Demo
 

@@ -518,7 +518,7 @@ which would have been tuning a structural rule to a case we already knew the ans
 ## 10. Reproduce
 
 ```bash
-uv run --python 3.12 pytest                                   # 237 tests
+uv run --python 3.12 pytest                                   # 376 tests (set SENTINEL_KIT=<kit> for the 3 corpus checks)
 scripts/run_eval.sh            <kit> public                   # and: validation
 scripts/run_ablation.sh        <kit> public                   # baseline ladder
 scripts/run_redteam.sh         <kit>                          # held-out ladder
