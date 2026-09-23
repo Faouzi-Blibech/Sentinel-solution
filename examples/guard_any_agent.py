@@ -36,7 +36,7 @@ Two backends:
 `src/haris/` is untouched by this file and imports nothing from it that is not already
 part of `HarisGuard`'s public surface (`haris.guard.HarisGuard`/`Source`/`Verdict`). The
 credential and vendor-email text below are this example's OWN fixture, not HARIS's --
-CLAUDE.md's "never hard-code" rule binds `src/haris/`, not `examples/`.
+the "never hard-code" rule (README, *No scenario hard-coding*) binds `src/haris/`, not `examples/`.
 """
 
 from __future__ import annotations
