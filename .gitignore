@@ -221,6 +221,7 @@ __marimo__/
 .playwright-mcp/
 artifacts/
 *.png
+!docs/system_diagram.png
 
 # Local audit scratch
 .playwright-cli/
