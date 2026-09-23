@@ -72,6 +72,10 @@ So our contribution is not another scenario-passing defense. It is:
 
 ## Architecture
 
+![How HARIS checks every agent action: the proposed action and everything the agent read pass six checks, which fuse into one risk score that allows, rewrites, escalates or blocks the action; every decision goes to the journal and the trace viewer](docs/system_diagram.png)
+
+The same path, stage by stage, as the code runs it:
+
 ```
 DefenseRequest
    -> target_action()          judge the action that would take effect, not a confirmation wrapper
