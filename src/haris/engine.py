@@ -12,7 +12,7 @@ from copy import deepcopy
 from typing import Any
 
 from pydantic import ValidationError
-from sentinel.core.actions import Decision, DefenseDecision
+from sentinel.core.actions import CandidateAction, Decision, DefenseDecision
 from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
@@ -117,11 +117,18 @@ def decide_detailed(
     # Recall-backed too, so a rewrite redacts a value remembered from an earlier request
     # in this run and not just one visible in this one (report.md 8.1).
     tainted = tainted_values(request, view, Sensitivity.CONFIDENTIAL, settings)
-    alternative = (
-        safer_alternative(request.candidate_action, policy, tainted, reasons=result.active_codes)
-        if settings.rewrite_enabled
-        else None
-    )
+
+    # `safer_alternative` scans the whole action for tainted content -- real cost on a
+    # large body -- and its answer is only ever used in the three branches below. Every
+    # ALLOW used to pay for it anyway (I3: most of the measured worst-case latency), so
+    # it is computed here, lazily, only where a rewrite could actually be offered.
+    def alternative() -> CandidateAction | None:
+        return (
+            safer_alternative(request.candidate_action, policy, tainted, reasons=result.active_codes)
+            if settings.rewrite_enabled
+            else None
+        )
+
     # A detected leak is never delegated to a human. The kit's simulated human approves an
     # escalation iff its envelope -- tool and match keys -- matches a legitimate step, and
     # never reads content; so an escalated draft to the vendor carrying an encoded token
@@ -129,17 +136,14 @@ def decide_detailed(
     # is in the envelope. For a leak the answer is a provably clean rewrite, or a block.
     leak = SENSITIVE_TO_EXTERNAL_SINK in result.active_codes
     if leak:
-        decision, rewritten = (
-            (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
-        )
+        alt = alternative()
+        decision, rewritten = (Decision.REWRITE, alt) if alt is not None else (Decision.BLOCK, None)
     elif result.risk_score >= settings.block_threshold:
-        decision, rewritten = (
-            (Decision.REWRITE, alternative) if alternative is not None else (Decision.BLOCK, None)
-        )
+        alt = alternative()
+        decision, rewritten = (Decision.REWRITE, alt) if alt is not None else (Decision.BLOCK, None)
     elif result.risk_score >= settings.escalate_threshold:
-        decision, rewritten = (
-            (Decision.REWRITE, alternative) if alternative is not None else (Decision.ESCALATE, None)
-        )
+        alt = alternative()
+        decision, rewritten = (Decision.REWRITE, alt) if alt is not None else (Decision.ESCALATE, None)
     else:
         decision, rewritten = Decision.ALLOW, None
 
