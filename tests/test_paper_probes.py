@@ -3,10 +3,13 @@ CyberRAG, FGCS 176 (2026) 108186 §5.5), run through `HarisGuard` the way a real
 would -- not through `engine.decide_detailed` directly, because the report's claim is
 about the front door callers actually use.
 
-Every disguise row here read ALLOW on the pre-hardening base commit (`3449183`,
+Five of the nine disguise rows (base32, base64-of-base64, full-width Unicode, Cyrillic
+look-alikes, reversed-then-rot13) read ALLOW on the pre-hardening base commit (`3449183`,
 measured by running this same probe there in a throwaway worktree, per
-`docs/report/report.md`'s "Research-derived hardening" section) and must not read ALLOW
-on this branch. `test_user_named_iban_stays_allowed` is the control: the same payment,
+`docs/report/report.md`'s "Research-derived hardening" section); the other four (plain,
+zero-width, base64, url-safe base64) were already caught before this branch and are
+included as negative controls, not fixes. None of the nine reads ALLOW on this branch.
+`test_user_named_iban_stays_allowed` is the control: the same payment,
 the same untrusted invoice email, but the IBAN is also in the user's own goal -- it was
 ALLOW before this branch and must still be ALLOW after, or the capability check would
 just be "escalate everything routed through untrusted content", not a structural rule.
