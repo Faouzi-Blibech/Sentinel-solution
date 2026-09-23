@@ -341,11 +341,22 @@ present:
 SENTINEL_KIT=../Sentinel_Starter_Kit uv run --python 3.12 pytest tests/test_no_hardcoding.py -v
 ```
 
-## Demo
+## Reproduce the demo
 
-The shot plan for the video demonstration is
-[`docs/report/video-plan.md`](docs/report/video-plan.md): four scenarios, the exact commands,
-the decisions and reason codes each one actually produced, and the narration keyed to the
-panels of the trace viewer. It includes the failure we show on camera.
+The video's traces come from the kit's reference agent with its mock model. With HARIS on
+port 8080 and the viewer open (`scripts/run_dashboard.sh ../Sentinel_Starter_Kit`), from the
+kit directory:
+
+```bash
+# a benign task: three ALLOWs, task completed
+uv run sentinel run --model mock --defense-url http://127.0.0.1:8080 --scenario scenarios/public/enterprise/enterprise_ticket_followup.yaml
+# an attack: payment_confirm and payment_execute blocked, the task still completed
+uv run sentinel run --model mock --defense-url http://127.0.0.1:8080 --scenario scenarios/public/finance/finance_false_approval.yaml
+# an encoded exfiltration: rewritten with the credential removed, the task still completed
+uv run sentinel run --model mock --defense-url http://127.0.0.1:8080 --scenario scenarios/validation/enterprise_val_encoded_exfil.yaml
+```
+
+Each run appears in the viewer within five seconds. The still-open failure shown in the
+video is one click away: *Connect an agent* → *Known failure: display name*.
 
 See `CLAUDE.md` for the full contract, the environment traps, and the command reference.

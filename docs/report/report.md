@@ -2,8 +2,7 @@
 
 SENTINEL challenge, IndabaX Tunisia 2026. Kit pinned at `dd2e5fe` (40 public scenarios).
 Evidence tables: [`findings.md`](findings.md). Safety statement:
-[`responsible-ai.md`](responsible-ai.md). Demonstration plan:
-[`video-plan.md`](video-plan.md).
+[`responsible-ai.md`](responsible-ai.md).
 
 ## 1. Summary
 
