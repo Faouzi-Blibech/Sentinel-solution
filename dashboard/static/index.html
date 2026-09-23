@@ -548,17 +548,34 @@ function normRun(view, entry) {
     const risk = journal && dec !== "NONE" && s.decision && s.decision.risk_score != null ? +s.decision.risk_score : null;
     const diff = dec === "REWRITE" ? diffOf(s.decision && s.decision.action, s.decision && s.decision.rewritten_action) : null;
 
-    const df = s.dataflow || {};
+    // Every journaled step went through the data-flow check, not only the ones with an
+    // address to send to. Building the card only for a destination argument hid exactly the
+    // cases the check exists for: a restricted value copied into an internal record, a
+    // confidential value written into a note, a secret quoted back in the reply.
+    const df = s.dataflow;
     let flow = null;
-    if (Array.isArray(df.destinations) && df.destinations.length) {
+    if (journal && dec !== "NONE" && df && typeof df === "object") {
+      const type = action && action.type;
+      const dests = Array.isArray(df.destinations) ? df.destinations : [];
+      const hits = +df.hits || 0;
+      const rcopy = !!df.restricted_copy;
+      const ext = df.destination_class === "external";
       const sensSrc = sources.find(x => x.tag);
+      let sink, kind;
+      if (dests.length) { sink = dests.join(", "); kind = ext ? "EXTERNAL" : "INTERNAL"; }
+      else if (type === "respond") { sink = "the reply to the user"; kind = "USER"; }
+      else if (type === "memory_write") { sink = "the agent's memory"; kind = "MEMORY"; }
+      else { sink = "the " + tool + " call"; kind = "RECORD"; }
       flow = {
-        val: df.tainted_hit ? df.tainted_hit : (df.hits ? "sensitive value" : "no sensitive value in the payload"),
+        hits, rcopy, ext, sink, kind, via: tool,
+        leak: rcopy || (hits > 0 && ext),
+        val: df.tainted_hit || (hits ? "a sensitive value" : ""),
         from: sensSrc ? sensSrc.name : "context",
-        sens: sensSrc ? sensSrc.tag : String((s.trust || {}).most_sensitive_seen || "").toUpperCase() || "—",
-        enc: !df.encoding || df.encoding === "plain" ? "plain text" : df.encoding === "none" ? "none" : df.encoding,
-        dest: df.destinations.join(", "), via: tool, ext: df.destination_class === "external",
-        out: OUT[dec] || "sent", recalled: df.recalled || 0, hits: df.hits || 0,
+        sens: rcopy ? "RESTRICTED" : sensSrc ? sensSrc.tag : String((s.trust || {}).most_sensitive_seen || "").toUpperCase(),
+        enc: !df.encoding || df.encoding === "none" || df.encoding === "plain" ? "plain text"
+          : df.encoding === "fragment" ? "a fragment of the value" : df.encoding,
+        known: +df.tainted_value_count || 0, recalled: +df.recalled || 0,
+        out: OUT[dec] || "sent",
       };
     }
 
@@ -572,7 +589,7 @@ function normRun(view, entry) {
     const top = fired[0];
     let annR = null;
     if (dec === "REWRITE") annR = { label: "SWAPPED IN", text: diff ? diff.field + " := " + short(diff.rep, 40) : "redacted before it ran", cause: top ? top.code : "rewritten" };
-    else if (dec === "BLOCK") annR = { label: "STOPPED HERE", text: flow ? "nothing sent to " + short(flow.dest, 40) : "the call never ran", cause: top ? top.code : (entry && entry.defense) + " decided" };
+    else if (dec === "BLOCK") annR = { label: "STOPPED HERE", text: flow && flow.leak ? "nothing sent to " + short(flow.sink, 40) : "the call never ran", cause: top ? top.code : (entry && entry.defense) + " decided" };
     else if (dec === "ESCALATE") annR = { label: "ASKED A HUMAN", text: "confirmation requested before it ran", cause: top ? top.code : "escalated" };
 
     return {
@@ -645,7 +662,7 @@ async function openRun(id, opts) {
   history.replaceState(null, "", "#run=" + encodeURIComponent(id));
   render();
 }
-const defaultTab = s => !s ? "risk" : s.dec === "REWRITE" && s.diff ? "diff" : s.dec === "BLOCK" && s.flow ? "flow" : "risk";
+const defaultTab = s => !s ? "risk" : s.dec === "REWRITE" && s.diff ? "diff" : (s.dec === "BLOCK" || s.dec === "REWRITE") && s.flow && s.flow.leak ? "flow" : "risk";
 function pickStep(i) {
   if (!S.run) return;
   const n = S.run.steps.length;
@@ -779,7 +796,7 @@ function bannerOf(R) {
         tone = "bad"; pre = "False alarm — legit task blocked at "; post = ".";
       } else { pre = "Legit task allowed after a check at "; post = "."; mark = "ALLOW"; }
       st = "step " + pad(R.iv);
-      if (ivS.dec === "REWRITE" && ivS.flow) why = "The agent tried to send a " + (ivS.flow.sens || "sensitive") + " value" + (ivS.flow.dest ? " to " + ivS.flow.dest : "") + ". HARIS redacted that value and let the call run, so the user still got their result.";
+      if (ivS.dec === "REWRITE" && ivS.flow && ivS.flow.leak) why = "The agent tried to send a " + (ivS.flow.sens || "sensitive") + " value to " + ivS.flow.sink + ". HARIS redacted that value and let the call run, so the user still got their result.";
       else if (top) why = "Strongest signal: " + top.code + " — " + top.why + ".";
       else why = ivS.explanation || "";
     } else { pre = "Clean run — nothing crossed the escalate threshold."; why = "Every step stayed below 0.40, so HARIS stayed out of the way."; }
@@ -890,13 +907,13 @@ function riskBreakdown(fired, risk, decWord) {
 
 function renderDrawer(R, s) {
   const D = DEC[s.dec];
-  const tabs = [["risk", "Risk breakdown", s.fired.length > 0], ["trust", "Trust chain", false], ["diff", "Before → after", !!s.diff], ["flow", "Data flow", !!s.flow], ["raw", "Raw event", false]];
+  const tabs = [["risk", "Risk breakdown", s.fired.length > 0], ["trust", "Trust chain", false], ["diff", "Before → after", !!s.diff], ["flow", "Data flow", !!(s.flow && s.flow.hits)], ["raw", "Raw event", false]];
   const ms = s.total != null ? fmt(s.total, 1) + " ms" : s.latency != null ? fmt(s.latency, 1) + " ms" : "n/a";
   let body;
   if (S.tab === "risk") body = tabRisk(R, s, D);
   else if (S.tab === "trust") body = tabTrust(R, s);
   else if (S.tab === "diff") body = tabDiff(s);
-  else if (S.tab === "flow") body = tabFlow(s);
+  else if (S.tab === "flow") body = tabFlow(R, s);
   else body = tabRaw(s, ms);
   const floating = S.float;
   const el = h("div", { class: "drawer" + (S.drawer ? " open" : "") + (floating ? " floating" : "") + (floating && S.popping ? " popping" : "") },
@@ -1112,27 +1129,56 @@ function tabDiff(s) {
     h("div", { class: "dim", style: "font-size:13px;margin-top:14px" }, "Everything else in the call is unchanged. Rewriting keeps the task alive — a block would have lost the whole action."),
   ];
 }
-function tabFlow(s) {
+const DECODINGS = "plain text, URL, Unicode look-alikes, base64, base32, hex, rot13, reversed, two-layer combinations and 10-character fragments";
+function tabFlow(R, s) {
+  if (!R.journal) return h("div", { class: "card-dashed" },
+    h("div", { class: "card-title" }, "No journal for this run"),
+    h("div", { style: "margin-top:6px" }, S.defense + " is a baseline and records no data flow. Switch the defense to HARIS in the sidebar to see what each step carried."));
+  if (s.dec === "NONE") return h("div", { class: "card-dashed" }, "This is the task itself — the agent has not sent anything yet.");
   const f = s.flow;
-  if (!f) return h("div", { class: "card-dashed" }, "No outbound payload — this step only reads or replies, so nothing can leave the system here.");
-  const cut = { blocked: ["✕  STOPPED HERE — nothing sent", P.block], rewritten: ["⇄  REDACTED BEFORE IT LEFT", P.rewrite], held: ["!  HELD FOR HUMAN CONFIRMATION", P.escalate], sent: ["↓  delivered", P.none] }[f.out];
+  if (!f) return h("div", { class: "card-dashed" }, "The journal has no data-flow record for this step.");
+  const kindChip = chip(f.kind, f.kind === "EXTERNAL" ? P.block : P.none);
+  if (!f.hits) return [
+    h("div", { class: "calm" },
+      shapeGlyph("ALLOW", 30, 15),
+      h("div", null,
+        h("div", { class: "card-title" }, "No sensitive value in this payload"),
+        h("div", { class: "dim", style: "font-size:13px;margin-top:4px;text-wrap:pretty" },
+          f.known
+            ? "HARIS checked everything this step sends to " + f.sink + " against the " + f.known + " sensitive value" + (f.known === 1 ? "" : "s") + " known in this run" +
+              (f.recalled ? " (" + f.recalled + " remembered from earlier steps)" : "") + ", decoded as " + DECODINGS + ". None appeared."
+            : "No sensitive value has entered this run yet, so there is nothing this step could leak."))),
+    h("div", { class: "flow-card", style: "margin-top:14px" },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" }, h("span", { class: "label" }, "Where it goes · via " + f.via), kindChip),
+      h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.sink)),
+  ];
+  const cut = { blocked: ["✕  STOPPED HERE — nothing sent", P.block], rewritten: ["⇄  REDACTED BEFORE IT LEFT", P.rewrite], held: ["!  HELD FOR HUMAN CONFIRMATION", P.escalate],
+    sent: [f.leak ? "↓  delivered" : "↓  ALLOWED — the rule permits this destination", f.leak ? P.block : P.allow] }[f.out];
   const went = f.out === "sent";
-  const outcome = { blocked: "Never reached. The call was dropped before it ran.", rewritten: "Reached — with the sensitive value replaced by [redacted].", held: "Waiting — paused until a human confirms.", sent: f.ext ? "Reached. The payload left the system." : "Reached an internal destination." }[f.out];
+  const rule = f.rcopy ? "Rule: a restricted value may be copied to no sink at all — not an email, not an internal record, not the reply."
+    : f.ext ? "Rule: a confidential value may not reach an external destination."
+    : f.kind === "USER" ? "Rule: the user who asked may see a confidential value. Only a restricted one may go nowhere."
+    : "Rule: a confidential value may stay inside the organisation, as here. Only a restricted one may go nowhere.";
+  const outcome = { blocked: "Never reached. The call was dropped before it ran.", rewritten: "Reached — with the sensitive value replaced by [redacted].", held: "Waiting — paused until a human confirms.",
+    sent: f.leak ? "Reached. The payload left the system." : "Reached. Nothing here broke the data-flow rule." }[f.out];
   return h("div", { style: "display:flex;flex-direction:column;align-items:stretch" },
     h("div", { class: "flow-card" },
-      h("div", { class: "label" }, "Source value"),
-      h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.val),
+      h("div", { class: "label" }, "Sensitive value in the payload"),
+      h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.val,
+        f.val.endsWith("...") ? h("span", { class: "faint", style: "font:400 12px var(--sans);margin-left:8px" }, "first characters only: the journal never writes a secret to disk") : null),
       h("div", { style: "display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--dim);flex-wrap:wrap" }, "from " + f.from,
         f.sens && f.sens !== "—" ? h("span", { style: "font:700 10px/1 var(--mono);letter-spacing:.08em;color:" + P.escalate + ";border:1px solid " + P.escalate + ";border-radius:4px;padding:3px 5px" }, f.sens) : null,
+        f.hits > 1 ? h("span", { class: "faint" }, "· " + f.hits + " sensitive values in this payload") : null,
         f.recalled ? h("span", { class: "faint" }, "· " + f.recalled + " remembered from earlier in the run") : null)),
     h("div", { class: "flow-stem" }),
-    h("div", { class: "pill" }, "encoding · ", h("b", { style: { color: f.enc === "plain text" || f.enc === "none" ? "var(--ink)" : P.escalate } }, f.enc)),
+    h("div", { class: "pill" }, "found as · ", h("b", { style: { color: f.enc === "plain text" ? "var(--ink)" : P.escalate } }, f.enc)),
     h("div", { class: "flow-stem", style: "height:16px" }),
     h("div", { style: { textAlign: "center", font: "700 12px/1 var(--mono)", letterSpacing: ".1em", color: cut[1], padding: "10px", borderTop: "2px dashed " + cut[1], borderBottom: went ? "0" : "2px dashed " + cut[1] } }, cut[0]),
+    h("div", { class: "dim", style: "font-size:12px;text-align:center;margin:6px 0 2px;text-wrap:pretty" }, rule),
     h("div", { style: { width: "2px", height: "20px", margin: "0 auto", background: went ? "var(--rule)" : "transparent", borderLeft: went ? "0" : "2px dotted var(--rule)" } }),
     h("div", { style: { border: "1px solid " + (f.ext ? (P.block + "99") : "var(--rule)"), background: f.ext ? (P.block + "12") : "var(--rs)", borderRadius: "12px", padding: "14px 16px", opacity: went ? "1" : ".6" } },
-      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" }, h("span", { class: "label" }, "Destination · via " + f.via), chip(f.ext ? "EXTERNAL" : "INTERNAL", f.ext ? P.block : P.none)),
-      h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.dest),
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" }, h("span", { class: "label" }, "Where it goes · via " + f.via), kindChip),
+      h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.sink),
       h("div", { class: "dim", style: "font-size:13px;margin-top:6px" }, outcome)));
 }
 function tabRaw(s, ms) {
