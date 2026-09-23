@@ -1184,7 +1184,7 @@ function tabFlow(R, s) {
     h("div", { class: "flow-card" },
       h("div", { class: "label" }, "Sensitive value in the payload"),
       h("div", { style: "font:600 15px var(--mono);margin-top:8px;overflow-wrap:anywhere" }, f.val,
-        f.val.endsWith("...") ? h("span", { class: "faint", style: "font:400 12px var(--sans);margin-left:8px" }, "first characters only: the journal never writes a secret to disk") : null),
+        f.val.endsWith("...") ? h("span", { class: "faint", style: "font:400 12px var(--sans);margin-left:8px" }, "first characters only: the data-flow record keeps no more than this") : null),
       h("div", { style: "display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--dim);flex-wrap:wrap" }, "from " + f.from,
         f.sens && f.sens !== "—" ? h("span", { style: "font:700 10px/1 var(--mono);letter-spacing:.08em;color:" + P.escalate + ";border:1px solid " + P.escalate + ";border-radius:4px;padding:3px 5px" }, f.sens) : null,
         f.hits > 1 ? h("span", { class: "faint" }, "· " + f.hits + " sensitive values in this payload") : null,

@@ -6,8 +6,8 @@ have to parse the very human-readable output this file is free to change. Callin
 `run_demo` directly gets the real `Verdict`s and the real "what was finally sent" values.
 
 The credential-redaction assertion below is the point of the whole example, not an
-incidental check -- see the module docstring for why, and see task-3-report.md for the
-scratch-copy mutation that proves it actually fails when the guard's verdict is ignored.
+incidental check -- see the module docstring for why. It was checked by mutation: on a
+scratch copy that ignores the guard's verdict, it fails.
 """
 
 from __future__ import annotations

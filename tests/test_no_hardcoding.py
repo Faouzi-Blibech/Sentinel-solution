@@ -53,7 +53,7 @@ OBSERVABILITY_ONLY = {"journal.py"}
 # the decision branches on -- e.g. recognizing a particular run and deciding differently
 # for it -- which is what this rule exists to catch (see the module docstring above).
 # Correlating requests that belong to the same conversation is also the only way to
-# close report.md 8.1 (a secret forgotten once its source scrolls out of the kit's
+# close the window-rollover leak (a secret forgotten once its source scrolls out of the kit's
 # 12-item conversation window): the contract gives no other handle for "these requests
 # are the same run".
 #

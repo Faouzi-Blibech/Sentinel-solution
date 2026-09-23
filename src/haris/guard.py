@@ -449,13 +449,9 @@ def _stringify_argument(key: str, value: Any) -> Any:
     the generic JSON-bracket encoding below: `haris/dataflow.py`'s internal-domain check
     is a string SUFFIX match, and `["a@corp.example"]` does not end in `@corp.example`
     the way `a@corp.example` does, so a single-recipient internal list would otherwise
-    misread as an external destination (I4). This fixes the single-recipient case
-    completely; dataflow.py also regex-extracts every address out of the joined string,
-    so a multi-recipient list is still scanned address-by-address, but the raw joined
-    value itself will not match the suffix check once it holds more than one address --
-    closing that residual case needs a small change in dataflow.py's own `_destinations`,
-    which is out of this file's scope and is flagged in the fix-round report instead of
-    made here.
+    misread as an external destination. A joined list of several recipients is read
+    address by address by `dataflow._recipients`, so it is internal exactly when every
+    recipient is.
     """
     if key.lower() in _DESTINATION_KEYS and isinstance(value, list) and value and all(
         isinstance(v, str) for v in value
