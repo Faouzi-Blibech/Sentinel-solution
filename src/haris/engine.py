@@ -17,6 +17,7 @@ from sentinel.core.provenance import Sensitivity
 from sentinel.defenses.interface import DefenseRequest
 
 from haris.authority import assess_authority, assess_memory_authority
+from haris.capability import assess_argument_origin
 from haris.config import SETTINGS, Settings
 from haris.dataflow import assess_dataflow
 from haris.fusion import fuse
@@ -85,6 +86,16 @@ def decide_detailed(
     lifecycle_signals = assess_confirmation(request, policy, view) if settings.lifecycle_enabled else []
     signals += lifecycle_signals
     timings["lifecycle"] = round((time.perf_counter() - mark) * 1000, 3)
+
+    # CaMeL's argument-origin check: independent of plan/lifecycle, so it must NOT feed
+    # `unauthorized` below -- that flag decides whether recalled memory counts as
+    # authority, a different question from where a routing argument's value came from.
+    mark = time.perf_counter()
+    capability_signals = (
+        assess_argument_origin(request, view, policy) if settings.capability_enabled else []
+    )
+    signals += capability_signals
+    timings["capability"] = round((time.perf_counter() - mark) * 1000, 3)
 
     # Recalled memory only counts as authority when something else already says this
     # action was not authorized. Otherwise the agent is simply using a fact it noted.

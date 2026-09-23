@@ -376,13 +376,14 @@ ABLATION_ARMS = (
     Arm(label="haris: no data flow", in_process=True, ablate=("dataflow",), attacker="mutation"),
     Arm(label="haris: no taint memory", in_process=True, ablate=("taint",), attacker="mutation"),
     Arm(label="haris: no rewrite", in_process=True, ablate=("rewrite",), attacker="mutation"),
+    Arm(label="haris: no capability check", in_process=True, ablate=("capability",), attacker="mutation"),
     # Provenance and the instruction-authority rule alone: the classic "untrusted text
     # cannot give orders" defense, without anything HARIS adds on top of it. It was
     # labelled "trust only", which it never was -- authority stays on.
     Arm(
         label="haris: trust + authority only",
         in_process=True,
-        ablate=("plan", "lifecycle", "dataflow", "rewrite", "memory", "taint"),
+        ablate=("plan", "lifecycle", "dataflow", "rewrite", "memory", "taint", "capability"),
         attacker="mutation",
     ),
     Arm(label="haris: full (in-process)", in_process=True, attacker="mutation"),

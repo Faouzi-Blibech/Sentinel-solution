@@ -91,7 +91,7 @@ def test_taint_memory_ablation_arm_sits_right_after_no_data_flow():
 
 def test_trust_and_authority_only_arm_still_means_every_other_stage_off():
     (arm,) = [a for a in ABLATION_ARMS if a.label == "haris: trust + authority only"]
-    assert set(arm.ablate) == {"plan", "lifecycle", "dataflow", "rewrite", "memory", "taint"}
+    assert set(arm.ablate) == {"plan", "lifecycle", "dataflow", "rewrite", "memory", "taint", "capability"}
 
 
 # ---- the scenario that rolls the 12-item conversation window --------------------------------

@@ -22,6 +22,7 @@ class Settings:
     memory_enabled: bool = True
     plan_enabled: bool = True
     lifecycle_enabled: bool = True
+    capability_enabled: bool = True
     dataflow_enabled: bool = True
     rewrite_enabled: bool = True
     taint_enabled: bool = True
