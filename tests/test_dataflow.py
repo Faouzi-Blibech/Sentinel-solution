@@ -113,7 +113,7 @@ def test_benign_send_without_secrets_is_clean():
     assert all(s.value == 0 for s in signals if s.code == SENSITIVE_TO_EXTERNAL_SINK)
 
 
-# --- Task 3: a fragment hit reports "fragment" in plain text, its own encoding elsewhere ---
+# --- A fragment hit reports "fragment" in plain text, its own encoding elsewhere ---
 
 
 def test_fragment_hit_in_plain_text_is_encoding_fragment_not_encoded_payload():

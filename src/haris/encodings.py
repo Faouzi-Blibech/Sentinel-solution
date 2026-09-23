@@ -174,7 +174,7 @@ FRAGMENTABLE_MIN_LETTERS = 4
 # could halve a secret into pieces below this size and still slip through -- but cost
 # precision: at W=10 any two needles that happen to share a common 10-char run collide,
 # and a payload need only reproduce ten consecutive characters of a secret to be judged
-# as carrying it. 10 is the point the brief fixes that trade-off at.
+# as carrying it. 10 is where we fix that trade-off.
 FRAGMENT_WINDOW_CHARS = 10
 
 
@@ -243,7 +243,7 @@ def fragment_hits(haystack: str, window_map: dict[str, frozenset[str]]) -> set[s
     Linear in `len(haystack)`: every window of the haystack is collected into a set
     once, then intersected against `window_map` -- never a substring search repeated
     per window, which is what a naive "for each window: window in haystack" would cost
-    and the brief specifically forbids (it degrades to quadratic on a long payload).
+    (it degrades to quadratic on a long payload).
     """
     if not window_map or len(haystack) < FRAGMENT_WINDOW_CHARS:
         return set()

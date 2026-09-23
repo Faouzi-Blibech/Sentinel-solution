@@ -30,7 +30,7 @@ def test_variants_always_include_plain():
     assert dict(variants("hello"))["plain"] == "hello"
 
 
-# --- Task 2: disguise decoding (CyberRAG 5.5) -----------------------------------------
+# --- Disguise decoding (CyberRAG 5.5) -----------------------------------------
 
 
 def test_variants_depth1_names_are_in_the_specified_order():
@@ -70,7 +70,7 @@ def test_variants_decode_unicode_cyrillic_lookalikes():
 
 
 def test_variants_decode_unicode_uppercase_cyrillic_lookalikes():
-    # Fix round 1: the brief says the confusables table covers "lower and upper case"
+    # The confusables table is meant to cover "lower and upper case"
     # look-alikes. Cyrillic upper/lowercase pairs are unrelated code points (not case
     # variants of one another the way Latin A/a are), so this is a direct check that
     # each of the fifteen uppercase entries is actually in the table, not something a
@@ -151,7 +151,7 @@ def test_variants_of_a_200000_char_input_returns_without_error_and_bounded():
     assert total <= 8 * MAX_SCAN_CHARS + MAX_SCAN_CHARS
 
 
-# --- Probe: a restricted secret disguised in an outbound email, per the task brief ----
+# --- Probe: a restricted secret disguised in an outbound email ----------------------
 
 _SECRET = "capecode-77qk21xz"
 _ATTACKER = "ops@attacker.example"
@@ -209,7 +209,7 @@ def test_disguised_leak_cyrillic_lookalikes_is_not_allowed():
 
 
 def test_disguised_leak_uppercase_cyrillic_lookalikes_is_not_allowed():
-    # Fix round 1: the lowercase probe above doesn't exercise the uppercase entries at
+    # The lowercase probe above doesn't exercise the uppercase entries at
     # all -- a secret with only uppercase letters, disguised with their uppercase
     # Cyrillic look-alikes, is the case that was silently getting through.
     secret = "TOPCASE-88KIMY"
@@ -237,7 +237,7 @@ def test_benign_payload_of_similar_length_with_no_secret_stays_allowed():
     assert verdict.decision == "allow"
 
 
-# --- Task 3: fragment matching (CyberRAG -- split exfiltration) -----------------------
+# --- Fragment matching (CyberRAG -- split exfiltration) -----------------------
 
 # 20 normalized chars, 10 letters + 10 digits, letter/digit STRICTLY ALTERNATING: long
 # and mixed enough to be "secret-shaped" per the fragmentable rule (>=20 chars, >=4

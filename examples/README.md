@@ -71,4 +71,4 @@ This file is also the closest thing to a worked example of the pattern in the
 README's **Use HARIS in your own agent** section: one `HarisGuard()`, one `.check()`
 call per proposed action, `sources=`/`messages=` for whatever context the agent has
 seen. Nothing here imports `sentinel.defenses.interface.DefenseRequest` directly --
-`HarisGuard` builds one internally, which is the entire point of task 2's adapter.
+`HarisGuard` builds one internally, which is the entire point of the adapter.

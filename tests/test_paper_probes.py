@@ -1,24 +1,24 @@
-"""The probe that motivated Task 4's paper-derived hardening (CaMeL, arXiv 2503.18813;
+"""The probe that motivated the paper-derived hardening (CaMeL, arXiv 2503.18813;
 CyberRAG, FGCS 176 (2026) 108186 §5.5), run through `HarisGuard` the way a real caller
-would -- not through `engine.decide_detailed` directly, because the report's claim is
+would -- not through `engine.decide_detailed` directly, because the claim is
 about the front door callers actually use.
 
 Five of the nine disguise rows (base32, base64-of-base64, full-width Unicode, Cyrillic
 look-alikes, reversed-then-rot13) read ALLOW on the pre-hardening base commit (`3449183`,
 measured by running this same probe there in a throwaway worktree); the other four (plain,
-zero-width, base64, url-safe base64) were already caught before this branch and are
-included as negative controls, not fixes. None of the nine reads ALLOW on this branch.
+zero-width, base64, url-safe base64) were already caught before this hardening and are
+included as negative controls, not fixes. None of the nine reads ALLOW with this hardening.
 `test_user_named_iban_stays_allowed` is the control: the same payment,
 the same untrusted invoice email, but the IBAN is also in the user's own goal -- it was
-ALLOW before this branch and must still be ALLOW after, or the capability check would
+ALLOW before this hardening and must still be ALLOW after, or the capability check would
 just be "escalate everything routed through untrusted content", not a structural rule.
 
-Fix round 1 (controller review): asserting only `decision != "allow"` -- or, for C3,
-only `decision == "escalate"` -- does not anchor the report's row-by-row *causal*
+Asserting only `decision != "allow"` -- or, for C3,
+only `decision == "escalate"` -- would not anchor findings.md's row-by-row *causal*
 claims. An unrelated rule blocking the same action would pass those assertions while
 falsifying "this row is caught by data_flow's SENSITIVE_TO_EXTERNAL_SINK" or "this row
-is caught by capability.py's UNTRUSTED_ARGUMENT_ORIGIN". Every row below now asserts the
-exact decision the report tables state AND the reason code the report attributes it to,
+is caught by capability.py's UNTRUSTED_ARGUMENT_ORIGIN". Every row below asserts the
+exact decision the findings.md tables state AND the reason code they attribute it to,
 the same way `tests/test_capability.py:74` pins `UNTRUSTED_ARGUMENT_ORIGIN` and
 `tests/test_encodings.py:141/250` pin `SENSITIVE_TO_EXTERNAL_SINK` for their own claims.
 
@@ -49,16 +49,16 @@ class _Disguise:
     # Whether decoding this disguise requires a non-plain transform -- distinguishes
     # "caught because the plain/zero-width text still contains the secret once
     # separators are stripped" from "caught because a decoder unwrapped it", which is
-    # the entire point Task 2 exists to measure. `False` also asserts the code's
+    # exactly what this probe measures. `False` also asserts the code's
     # ABSENCE, not just skips the assertion -- a decoder firing on plain text would be
     # its own bug.
     encoded: bool
 
 
 # `codecs.decode(_SECRET[::-1], "rot13")` is "reverse, then rot13" -- named
-# `rot13_of_reversed` here to match the brief's wording; it is the transform
+# `rot13_of_reversed` here; it is the transform
 # `encodings.variants()` names `reversed+rot13`. Decisions and the `encoded` flag are
-# the measured values on this branch (see the before/after table in
+# the measured values with this hardening (see the before/after table in
 # findings.md §6) -- `zero_width` reads BLOCK, not REWRITE, because `normalize()`
 # strips the zero-width joins and the whole body collapses to just the bare secret with
 # no surrounding text worth redacting around.
@@ -113,7 +113,7 @@ def test_disguised_leak_is_not_allowed(name: str) -> None:
 
 
 def test_secret_split_across_two_calls_is_not_allowed() -> None:
-    """Reads before this branch's Task 3: ALLOW on both calls -- neither half alone
+    """Before fragment matching: ALLOW on both calls -- neither half alone
     contained the whole secret, and nothing matched a fragment of it. The SAME guard
     instance makes both calls, so `haris/recall.py`'s cross-call taint memory is in play
     exactly as it would be for a real two-turn agent trying to split a leak.
@@ -142,7 +142,7 @@ def test_untrusted_note_cannot_authorize_an_action_the_goal_never_asked_for() ->
     """C1: the goal is "summarize", not "close" -- an untrusted comment cannot promote
     itself to an instruction just by asserting one. This held even on the pre-hardening
     base commit (authority.py's structural rule, not the new capability stage) --
-    included here as the negative control: Task 1 narrows an existing gap, it does not
+    included here as the negative control: the capability check narrows an existing gap, it does not
     single-handedly carry every case in this file.
 
     The causal code is `EFFECT_ESCALATION` (the committed action's effect exceeds what
@@ -178,14 +178,14 @@ def _invoice_sources() -> list[Source]:
 
 
 def test_iban_supplied_only_by_the_invoice_email_escalates() -> None:
-    """C3: reads ALLOW before this branch's Task 1 -- the invoice email named the IBAN,
+    """C3: read ALLOW before the capability check -- the invoice email named the IBAN,
     the goal never did, and nothing grounded the value before the capability check
     existed. This is the headline CaMeL fix.
 
     `UNTRUSTED_ARGUMENT_ORIGIN` is `capability.py`'s own signal (`haris/signals.py`) --
     asserting only `decision == "escalate"` would also pass if some unrelated rule
-    escalated this payment for its own reason, which would falsify the report's
-    attribution of this row to Task 1 without failing the test.
+    escalated this payment for its own reason, which would falsify the
+    attribution of this row to the capability check without failing the test.
     """
     guard = HarisGuard(
         internal_email_domains=["corp.example"],
@@ -233,7 +233,7 @@ def test_bare_guard_never_rewrites_the_fraud_case_into_a_laundered_draft() -> No
 def test_user_named_iban_stays_allowed() -> None:
     """C4: the same payment, the same untrusted invoice email -- but the user's own goal
     already names the IBAN, so the vendor email adds no authority the user did not
-    already grant. ALLOW both before and after Task 1: the control that proves the
+    already grant. ALLOW both before and after the capability check: the control that proves the
     capability check grounds on provenance, not on "untrusted source present".
 
     `UNTRUSTED_ARGUMENT_ORIGIN` must be ABSENT here, not merely untested -- its presence

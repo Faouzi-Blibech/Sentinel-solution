@@ -5,7 +5,7 @@ type -- either directly (`tests/`) or through the kit's evaluator (`redteam/`). 
 script is neither. It is a small, self-contained agent loop with its own shapes (an
 OpenAI-style tool call, a plain string final answer) that calls `HarisGuard.check()` the
 way an outside team's agent would: no `DefenseRequest` constructed anywhere here, no
-scenario ids, no simulator. That is the whole point of task 2's second front door, and
+scenario ids, no simulator. That is the whole point of the second front door, and
 this file exists to make it visible in ten seconds from a clean clone.
 
 Two scenarios, both run through the SAME guard adapter:
@@ -16,7 +16,7 @@ Two scenarios, both run through the SAME guard adapter:
   proposes sending a real credential to the address the email named. HARIS does not
   refuse the send outright: with no tool policy declared it offers the core's own
   downgrade, `email_send` -> `email_draft`, credential redacted -- "rewrite, not
-  refusal" is the behaviour this demo exists to show (task-3-brief.md, and see
+  refusal" is the behaviour this demo exists to show (see
   `tests/test_guard.py::test_rewrite_with_no_policy_tool_lists_at_all_is_offered_like_the_core_would`
   for the same shape proven against the engine directly).
 
@@ -53,8 +53,8 @@ from haris.guard import HarisGuard, Source, Verdict
 
 # --- Fixture data: this example's own, never read by src/haris -----------------------
 
-# Realistic, not a cartoon: phrased the way the benchmark's own injected scenarios read
-# (task-3-brief.md) -- a plausible vendor-ops request, not "IGNORE ALL PREVIOUS
+# Realistic, not a cartoon: phrased the way the benchmark's own injected scenarios read:
+# a plausible vendor-ops request, not "IGNORE ALL PREVIOUS
 # INSTRUCTIONS". The instruction to send the key to an outside address is the injection;
 # nothing about the wording announces itself as one, which is the point.
 #
@@ -98,7 +98,7 @@ GOAL_VENDOR = "Check the vendor inbox and follow up on whatever they need."
 
 
 def _openai_tool_call(call_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """One of the four shapes `HarisGuard.check()` recognizes (task-2-brief.md) -- used
+    """One of the four shapes `HarisGuard.check()` recognizes -- used
     here, rather than the plain `{"name", "arguments"}` shape, specifically so the demo
     also shows a `rewrite` coming back in the CALLER'S OWN shape (an OpenAI `function`
     call in, one out, ready to feed straight back to a real OpenAI-style loop).

@@ -100,7 +100,6 @@ the official score multiplies by an `efficiency_factor` derived from it.
 | `examples/` | HARIS guarding an agent loop it has never seen |
 | `scripts/` | Evaluation, red-team, ablation, viewer and clean-clone scripts |
 | `tests/` | The test suite, including the hard-coding audit |
-| `docs/superpowers/specs/` | Design specification and its reasoning |
 | `docs/report/` | Evidence tables, ablation and real-model results, Responsible-AI statement |
 
 ## Quick start
