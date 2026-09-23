@@ -29,7 +29,7 @@ from sentinel.core.actions import ActionType, CandidateAction
 
 from haris.encodings import normalize, reveals_any
 from haris.policy import PolicyView
-from haris.signals import GOAL_PROHIBITION, SENSITIVE_TO_EXTERNAL_SINK
+from haris.signals import GOAL_PROHIBITION, SENSITIVE_TO_EXTERNAL_SINK, UNTRUSTED_ARGUMENT_ORIGIN
 
 REDACTION = "[redacted]"
 
@@ -127,6 +127,15 @@ def safer_alternative(
     # An authenticated user who forbade this action did not ask for a neighbouring one.
     # Substituting here is disobedience, not mitigation, so a prohibition reaches BLOCK.
     if GOAL_PROHIBITION in codes:
+        return None
+
+    # T1: a tool-name downgrade (send -> draft) copies every argument across unchanged
+    # -- there is no redaction concept for a routing argument like "iban" (ROUTING_KEYS
+    # below is deliberately excluded from redaction, not emptied of the taint). If
+    # capability.py flagged the value's PROVENANCE, not its content, swapping the tool
+    # name rides the exact same ungrounded argument into a differently-named call --
+    # laundering, not mitigation.
+    if UNTRUSTED_ARGUMENT_ORIGIN in codes:
         return None
 
     if action.type in (ActionType.RESPOND, ActionType.MEMORY_WRITE) and action.content:

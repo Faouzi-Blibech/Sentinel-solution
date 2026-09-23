@@ -132,6 +132,14 @@ def assess_dataflow(
     destinations = _destinations(action.arguments) if action.type is ActionType.TOOL_CALL else []
     destination_class = _destination_class(destinations, policy)
 
+    # Identifiers the authenticated user named are theirs to work with. Restricted records
+    # carry hostnames and asset ids alongside the secret, and echoing the host the user
+    # asked about into a note is the task, not a leak. Computed before the hit loop (not
+    # just at the whole-needle filter below) because I2 extends the same exemption to a
+    # fragment window: a window that is itself just the portion the user already named
+    # is exactly as much theirs as a whole named needle would be.
+    named_by_user = normalize(request.user_goal)
+
     # Every hit, in a fixed order. Stopping at the first needle of a *set* made the
     # verdict depend on PYTHONHASHSEED, and let a confidential value in the same payload
     # hide a restricted one from the copy rule below.
@@ -146,6 +154,8 @@ def assess_dataflow(
         # disagree about what a fragment reveals the way they once disagreed about
         # encodings.
         window_map = fragment_window_map(ordered)
+        if named_by_user:
+            window_map = {w: parents for w, parents in window_map.items() if w not in named_by_user}
         for encoding, decoded in variants(payload):
             haystack = normalize(decoded)
             full_hits_here: set[str] = set()
@@ -171,10 +181,6 @@ def assess_dataflow(
                     # in that encoding would be.
                     hits.append((encoding, needle))
 
-    # Identifiers the authenticated user named are theirs to work with. Restricted records
-    # carry hostnames and asset ids alongside the secret, and echoing the host the user
-    # asked about into a note is the task, not a leak.
-    named_by_user = normalize(request.user_goal)
     restricted_hits = sorted(
         needle for _, needle in hits if needle in restricted and needle not in named_by_user
     )
