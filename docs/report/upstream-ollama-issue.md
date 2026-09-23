@@ -7,8 +7,8 @@ comment in the normal issue view, so a reader who just opens the issue sees none
 Filed against github.com/Skan22/Sentinel_Starter_Kit, commit
 dd2e5fe0979d0781a4bfe6d0849cd80cf69ef4a2 (the pinned reference for this submission). Not
 filed by us -- this file is the ready-to-paste issue body; filing it is left to whoever owns
-the GitHub account. Our fuller write-up and raw trace live in our own report
-(docs/report/report.md §6), which the organizers cannot see, so nothing below points a
+the GitHub account. Our fuller write-up lives in our own repository
+(docs/report/findings.md, section 7); the issue below stands on its own and points no
 reader at it.
 -->
 

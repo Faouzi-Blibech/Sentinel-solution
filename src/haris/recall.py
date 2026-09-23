@@ -4,7 +4,7 @@
 which only sees the conversation items in the request it was handed -- at most 12, the
 kit's `runtime.max_conversation_items`. HARIS kept nothing between requests, so once the
 document holding a secret scrolled out of that window, the value stopped being tainted
-and a byte-identical write of it was allowed at risk 0.0 (report.md 8.1, reproduced by a
+and a byte-identical write of it was allowed at risk 0.0 (reproduced by a
 real model against a finance case-note scenario: it retried the write thirteen times and
 HARIS caught twelve).
 

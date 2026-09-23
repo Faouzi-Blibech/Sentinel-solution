@@ -349,7 +349,7 @@ def test_guard_endpoint_ignores_an_unknown_top_level_field():
 
 
 # =====================================================================================
-# Fix round 1: C1-C4, I1-I7, M1 (see task-2-report.md's "Fix round 1" section)
+# Review fixes: critical C1-C4, important I1-I7, minor M1
 # =====================================================================================
 
 

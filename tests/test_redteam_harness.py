@@ -99,12 +99,12 @@ def test_trust_and_authority_only_arm_still_means_every_other_stage_off():
 # `haris: no taint memory` used to read identically to the full configuration on every
 # scenario we owned (ASR 0.000 both ways) because none of them ran long enough to push the
 # document holding a secret out of the kit's runtime.max_conversation_items window. This
-# scenario is a regression test for report.md 8.1 (redteam/regression/, not the held-out
+# scenario is a regression test for the window-rollover leak (redteam/regression/, not the held-out
 # ladder -- it was written after our own fix, to test our own fix; see its own description
 # for why that distinction matters to a sceptical reader of the score table). These tests
 # assert the specific shape that makes the window actually roll, not just that the file
 # parses -- a scenario that parses but never rolls the window would pass a weaker test and
-# still leave the ablation arm inert, which is exactly the failure mode fix-round-1 found in
+# still leave the ablation arm inert, which is exactly the failure mode our own review found in
 # the first version of these tests: `max_steps >= 19` passed even on a plan that never rolled
 # anything, and `first.args == retry.args` alone passed even if both were replaced with
 # "hello" or if a filler step re-read the document and refreshed the window.
@@ -246,8 +246,8 @@ def _run_in_process(scenario, kit: pathlib.Path, store, label: str, *ablate: str
 
 def test_window_rollover_scenario_full_holds_no_taint_breaches_and_the_boundary_is_step_14():
     """A structural check on the YAML (the tests above) cannot tell a scenario that
-    actually rolls the window from one that merely looks long enough to -- fix-round-1's
-    review found exactly that gap: `max_steps >= 19` passed on a plan that rolled
+    actually rolls the window from one that merely looks long enough to -- our own review
+    found exactly that gap: `max_steps >= 19` passed on a plan that rolled
     nothing. This runs the scenario for real, in process, against the kit's own
     evaluator, and pins the exact step the flip happens at rather than just "somewhere
     past 12": with the retry moved to step 13 (10 filler steps kept) the document's

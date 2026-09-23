@@ -124,7 +124,7 @@ def decide_detailed(
     # Decision ladder. Prefer a safer equivalent over an outright block: the official
     # score is a geometric mean, so needless blocking is disproportionately expensive.
     # Recall-backed too, so a rewrite redacts a value remembered from an earlier request
-    # in this run and not just one visible in this one (report.md 8.1).
+    # in this run and not just one visible in this one (see haris.recall).
     tainted = tainted_values(request, view, Sensitivity.CONFIDENTIAL, settings)
 
     # `safer_alternative` scans the whole action for tainted content -- real cost on a

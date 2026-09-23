@@ -117,7 +117,7 @@ def assess_dataflow(
     payload = action.text_payload()
     # What THIS request's own spans show, with no memory involved -- kept separately so
     # the metadata below can report how much of `tainted` came from recall rather than
-    # from something visible right now (report.md 8.1: the whole point of the fix is
+    # from something visible right now (the whole point of run-scoped recall is
     # that these two can now differ). `tainted_values`' own CONFIDENTIAL derivation
     # below is a cache hit against this, not a second scan.
     visible = cached_extract(view, Sensitivity.CONFIDENTIAL)

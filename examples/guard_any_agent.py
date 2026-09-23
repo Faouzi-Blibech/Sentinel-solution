@@ -25,7 +25,7 @@ Two backends:
 * `--model scripted` (default) -- a hand-written, deterministic stand-in for a model.
   No network, no GPU. It is scripted to attempt the exfiltration in the second scenario
   because that is what a real local model did against a structurally identical prompt
-  (`docs/report/report.md` §6): the injection is not a strawman, it is what worked.
+  (`docs/report/findings.md`, section 7): the injection is not a strawman, it is what worked.
 * `--model ollama:<name>` -- the identical two goals, driven by a real local model
   through Ollama (`redteam/ollama_agent.py`, reused as-is). Best effort: if the contract
   package, Ollama, or the named model is not available, this backend is skipped with a

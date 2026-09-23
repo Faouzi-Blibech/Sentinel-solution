@@ -5,8 +5,7 @@ about the front door callers actually use.
 
 Five of the nine disguise rows (base32, base64-of-base64, full-width Unicode, Cyrillic
 look-alikes, reversed-then-rot13) read ALLOW on the pre-hardening base commit (`3449183`,
-measured by running this same probe there in a throwaway worktree, per
-`docs/report/report.md`'s "Research-derived hardening" section); the other four (plain,
+measured by running this same probe there in a throwaway worktree); the other four (plain,
 zero-width, base64, url-safe base64) were already caught before this branch and are
 included as negative controls, not fixes. None of the nine reads ALLOW on this branch.
 `test_user_named_iban_stays_allowed` is the control: the same payment,
@@ -59,7 +58,7 @@ class _Disguise:
 # `codecs.decode(_SECRET[::-1], "rot13")` is "reverse, then rot13" -- named
 # `rot13_of_reversed` here to match the brief's wording; it is the transform
 # `encodings.variants()` names `reversed+rot13`. Decisions and the `encoded` flag are
-# the measured values on this branch (see the before/after table in report.md §9 /
+# the measured values on this branch (see the before/after table in
 # findings.md §6) -- `zero_width` reads BLOCK, not REWRITE, because `normalize()`
 # strips the zero-width joins and the whole body collapses to just the bare secret with
 # no surrounding text worth redacting around.
